@@ -1,26 +1,16 @@
 package com.scanner
 
 import android.graphics.Color
+import android.util.Log
+import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
-import com.facebook.react.uimanager.ViewManagerDelegate
 import com.facebook.react.uimanager.annotations.ReactProp
-import com.facebook.react.viewmanagers.ScannerViewManagerInterface
-import com.facebook.react.viewmanagers.ScannerViewManagerDelegate
+import com.facebook.react.uimanager.events.RCTModernEventEmitter
 
 @ReactModule(name = ScannerViewManager.NAME)
-class ScannerViewManager : SimpleViewManager<ScannerView>(),
-  ScannerViewManagerInterface<ScannerView> {
-  private val mDelegate: ViewManagerDelegate<ScannerView>
-
-  init {
-    mDelegate = ScannerViewManagerDelegate(this)
-  }
-
-  override fun getDelegate(): ViewManagerDelegate<ScannerView>? {
-    return mDelegate
-  }
+class ScannerViewManager : SimpleViewManager<ScannerView>() {
 
   override fun getName(): String {
     return NAME
@@ -30,12 +20,99 @@ class ScannerViewManager : SimpleViewManager<ScannerView>(),
     return ScannerView(context)
   }
 
-  @ReactProp(name = "color")
-  override fun setColor(view: ScannerView?, color: String?) {
-    view?.setBackgroundColor(Color.parseColor(color))
+  // Barcode configuration
+  @ReactProp(name = "barcodeTypes")
+  fun setBarcodeTypes(view: ScannerView?, types: ReadableArray?) {
+    if (types != null) {
+      val typeList = mutableListOf<String>()
+      for (i in 0 until types.size()) {
+        typeList.add(types.getString(i) ?: "")
+      }
+      Log.d("ScannerViewManager", "Barcode types set: $typeList")
+      // Note: The actual barcode type filtering would be implemented in ScannerView
+      // For now, ML Kit will detect all supported barcode types
+    }
+  }
+
+  // Frame configuration
+  @ReactProp(name = "enableFrame")
+  fun setEnableFrame(view: ScannerView?, enable: Boolean?) {
+    view?.setEnableFrame(enable ?: false)
+  }
+
+  @ReactProp(name = "frameColor")
+  fun setFrameColor(view: ScannerView?, color: String?) {
+    if (color != null) {
+      view?.setFrameColor(color)
+    }
+  }
+
+  @ReactProp(name = "frameSize")
+  fun setFrameSize(view: ScannerView?, size: Int?) {
+    if (size != null) {
+      view?.setFrameSize(size)
+    }
+  }
+
+  // Torch control
+  @ReactProp(name = "torch")
+  fun setTorch(view: ScannerView?, enabled: Boolean?) {
+    view?.setTorch(enabled ?: false)
+  }
+
+  // Event handlers
+  @ReactProp(name = "onBarcodeScanned")
+  fun setOnBarcodeScanned(view: ScannerView?, onBarcodeScanned: Boolean?) {
+    // This prop is used to register the event handler
+    // The actual event emission happens in ScannerView.processImage()
+    Log.d("ScannerViewManager", "onBarcodeScanned event handler registered")
+  }
+
+  @ReactProp(name = "onScannerError")
+  fun setOnScannerError(view: ScannerView?, onScannerError: Boolean?) {
+    // This prop is used to register the event handler
+    Log.d("ScannerViewManager", "onScannerError event handler registered")
+  }
+
+  @ReactProp(name = "onLoad")
+  fun setOnLoad(view: ScannerView?, onLoad: Boolean?) {
+    // This prop is used to register the event handler
+    Log.d("ScannerViewManager", "onLoad event handler registered")
+  }
+
+  // // Legacy prop for backward compatibility
+  // @ReactProp(name = "color")
+  // fun setColor(view: ScannerView?, color: String?) {
+  //   // This is kept for backward compatibility but doesn't affect the scanner
+  //   Log.w("ScannerViewManager", "setColor is deprecated. Use frameColor instead.")
+  // }
+
+  @ReactProp(name = "zoom")
+  fun setZoom(view: ScannerView?, zoom: Double) {
+    view?.setZoom(zoom.toFloat())
+  }
+
+  @ReactProp(name = "pauseScanning")
+  fun setPauseScanning(view: ScannerView?, pause: Boolean?) {
+    if (pause == true) {
+      view?.pauseScanning()
+    } else {
+      view?.resumeScanning()
+    }
   }
 
   companion object {
     const val NAME = "ScannerView"
+  }
+
+  override fun getExportedCustomBubblingEventTypeConstants(): MutableMap<String, Any> {
+    val map = mutableMapOf<String, Any>()
+    map["onBarcodeScanned"] = mapOf(
+      "phasedRegistrationNames" to mapOf(
+        "bubbled" to "onBarcodeScanned"
+      )
+    )
+    // Add more events here if needed
+    return map
   }
 }

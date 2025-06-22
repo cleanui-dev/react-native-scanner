@@ -1,8 +1,33 @@
-import codegenNativeComponent from 'react-native/Libraries/Utilities/codegenNativeComponent';
 import type { ViewProps } from 'react-native';
+import type { HostComponent } from 'react-native';
+import codegenNativeComponent from 'react-native/Libraries/Utilities/codegenNativeComponent';
+import type {
+  BubblingEventHandler,
+  Double,
+} from 'react-native/Libraries/Types/CodegenTypes';
 
-interface NativeProps extends ViewProps {
-  color?: string;
+export interface NativeProps extends ViewProps {
+  barcodeTypes?: string[];
+  enableFrame?: boolean;
+  frameColor?: string;
+  torch?: boolean;
+  zoom?: Double;
+  pauseScanning?: boolean;
+  onBarcodeScanned?: BubblingEventHandler<{
+    data: string;
+    format: string;
+    timestamp: Double;
+  }>;
+  onScannerError?: BubblingEventHandler<{
+    error: string;
+    code: string;
+  }>;
+  onLoad?: BubblingEventHandler<{
+    success: boolean;
+    error?: string;
+  }>;
 }
 
-export default codegenNativeComponent<NativeProps>('ScannerView');
+export default codegenNativeComponent<NativeProps>(
+  'ScannerView'
+) as HostComponent<NativeProps>;
