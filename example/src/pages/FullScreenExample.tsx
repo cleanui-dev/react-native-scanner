@@ -46,11 +46,43 @@ const useNavigationBarControl = (immersive: boolean) => {
   return immersive;
 };
 
+// Custom hook to get reliable insets for Android 10
+const useReliableInsets = (immersive: boolean = false) => {
+  const insets = useSafeAreaInsets();
+
+  // Fallback for Android 10 where insets might be zero
+  if (Platform.OS === 'android') {
+    const topInset = insets.top > 0 ? insets.top : StatusBar.currentHeight || 0;
+
+    // For bottom inset, try to calculate navigation bar height
+    let bottomInset = insets.bottom;
+    if (bottomInset === 0) {
+      // In Android 10, if we're in immersive mode, bottom inset should be 0
+      // If not in immersive mode, estimate navigation bar height
+      if (!immersive) {
+        // We'll use a conservative estimate of 48dp (typical navigation bar height)
+        // You can adjust this value based on your testing
+        bottomInset = 48;
+      }
+      // If immersive is true, keep bottomInset as 0
+    }
+
+    return {
+      top: topInset,
+      bottom: bottomInset,
+      left: insets.left,
+      right: insets.right,
+    };
+  }
+
+  return insets;
+};
+
 function FullScreenExample() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [enableFrame, setEnableFrame] = useState(true);
   const [frameColor, setFrameColor] = useState('#00FF00');
-  const [frameSize, setFrameSize] = useState(350);
+  const [frameSize, setFrameSize] = useState(300);
   const [zoom, setZoom] = useState(1);
   const [immersive, setImmersive] = useState(true); // Default to immersive mode
   const [extendToGestureArea, setExtendToGestureArea] = useState(true); // Extend UI to gesture area
@@ -58,7 +90,7 @@ function FullScreenExample() {
   const [permission, setPermission] = useState<
     'granted' | 'denied' | 'blocked' | 'unavailable' | 'limited' | 'loading'
   >('loading');
-  const insets = useSafeAreaInsets();
+  const insets = useReliableInsets();
 
   // Apply navigation bar behavior
   useNavigationBarControl(immersive);
@@ -146,7 +178,7 @@ function FullScreenExample() {
   };
 
   const changeFrameSize = () => {
-    setFrameSize(frameSize === 350 ? 400 : frameSize === 400 ? 300 : 350);
+    setFrameSize(frameSize === 300 ? 250 : 300);
   };
 
   const changeZoom = () => {

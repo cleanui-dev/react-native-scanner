@@ -24,6 +24,8 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import androidx.core.graphics.toColorInt
+import com.scanner.views.FrameOverlayView
 
 class ScannerView : FrameLayout {
   private var cameraProvider: ProcessCameraProvider? = null
@@ -38,7 +40,7 @@ class ScannerView : FrameLayout {
   // Frame configuration
   private var enableFrame: Boolean = false
   private var frameColor: Int = Color.WHITE
-  private var frameSize: FrameSize = FrameSize.Square(350)
+  private var frameSize: FrameSize = FrameSize.Square(300)
   private var barcodeFrameConfigs: List<BarcodeFrameConfig> = emptyList()
 
   // React context for event emission
@@ -239,8 +241,8 @@ private fun setupAutoFocusOnFrame() {
 }
 
 
-  @OptIn(ExperimentalGetImage::class)
-  private fun processImage(imageProxy: ImageProxy) {
+ @OptIn(ExperimentalGetImage::class)
+private fun processImage(imageProxy: ImageProxy) {
     try {
       // Skip processing if scanning is paused
       if (isScanningPaused) {
@@ -248,26 +250,26 @@ private fun setupAutoFocusOnFrame() {
         return
       }
 
-      val mediaImage = imageProxy.image
-      if (mediaImage != null && previewView != null) {
-        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        val transformationInfo = ImageAnalysisTransformationInfo(
-          resolution = Size(imageProxy.width, imageProxy.height),
-          rotationDegrees = imageProxy.imageInfo.rotationDegrees
-        )
+  val mediaImage = imageProxy.image
+  if (mediaImage != null && previewView != null) {
+    val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+    val transformationInfo = ImageAnalysisTransformationInfo(
+      resolution = Size(imageProxy.width, imageProxy.height),
+      rotationDegrees = imageProxy.imageInfo.rotationDegrees
+    )
 
-        barcodeScanner.process(image)
-          .addOnSuccessListener { barcodes ->
+    barcodeScanner.process(image)
+      .addOnSuccessListener { barcodes ->
             if (barcodes.isNotEmpty()) {
               val barcode = barcodes[0]
               val frame = overlayView?.frameRect
               val barcodeBox = barcode.boundingBox
 
-              if (frame != null && barcodeBox != null) {
+              if (frame != null && barcodeBox != null && !isScanningPaused) {
                 val transformedBarcodeBox = transformBarcodeBoundingBox(barcodeBox, transformationInfo, previewView!!)
                 if (frame.contains(transformedBarcodeBox)) {
                   Log.d("ScannerView", "Barcode detected inside frame: ${barcode.rawValue}")
-                  isScanningPaused = true // Pause scanning to prevent multiple scans
+
 
                   val eventData = Arguments.createMap().apply {
                     putString("data", barcode.rawValue)
@@ -287,22 +289,22 @@ private fun setupAutoFocusOnFrame() {
                     Log.d("ScannerView", "Barcode detected outside frame. Ignoring. Frame: $frame, Barcode box (transformed): $transformedBarcodeBox")
                 }
               }
-            }
-          }
-          .addOnFailureListener { e ->
-            Log.e("ScannerView", "Barcode scanning failed", e)
-          }
-          .addOnCompleteListener {
-            imageProxy.close()
-          }
-      } else {
+        }
+      }
+      .addOnFailureListener { e ->
+        Log.e("ScannerView", "Barcode scanning failed", e)
+      }
+      .addOnCompleteListener {
+        imageProxy.close()
+      }
+  } else {
         imageProxy.close()
       }
     } catch (e: Exception) {
       Log.e("ScannerView", "Error processing image", e)
-      imageProxy.close()
-    }
+    imageProxy.close()
   }
+}
 
   // Frame setter methods
   fun setEnableFrame(enable: Boolean) {
@@ -411,112 +413,4 @@ private fun transformBarcodeBoundingBox(
   transformedRect.bottom = transformedRect.bottom * scale + offsetY
 
   return transformedRect
-}
-
-// Separate overlay view for frame drawing
-class FrameOverlayView : View {
-  private var enableFrame: Boolean = false
-  private var frameColor: Int = Color.WHITE
-  private var frameSize: FrameSize = FrameSize.Square(350)
-  private var barcodeFrameConfigs: List<BarcodeFrameConfig> = emptyList()
-  var frameRect: RectF? = null
-    private set
-
-  constructor(context: Context) : super(context) {
-    setWillNotDraw(false)
-  }
-
-  constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
-    setWillNotDraw(false)
-  }
-
-  constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
-    setWillNotDraw(false)
-  }
-
-  override fun onDraw(canvas: Canvas) {
-    super.onDraw(canvas)
-
-    if (enableFrame) {
-      drawFrame(canvas)
-    }
-  }
-
-  private fun drawFrame(canvas: Canvas) {
-    val centerX = width / 2f
-    val centerY = height / 2f
-
-    // Calculate frame dimensions based on frameSize type
-    val currentFrameSize = frameSize // Local copy to avoid smart cast issues
-    val (frameWidth, frameHeight) = when (currentFrameSize) {
-      is FrameSize.Square -> {
-        val density = context.resources.displayMetrics.density
-        val size = currentFrameSize.size * density
-        size to size
-      }
-      is FrameSize.Rectangle -> {
-        val density = context.resources.displayMetrics.density
-        val width = currentFrameSize.width * density
-        val height = currentFrameSize.height * density
-        width to height
-      }
-    }
-
-    val frameHalfWidth = frameWidth / 2f
-    val frameHalfHeight = frameHeight / 2f
-
-    // Calculate frame rectangle
-    frameRect = RectF(
-      centerX - frameHalfWidth,
-      centerY - frameHalfHeight,
-      centerX + frameHalfWidth,
-      centerY + frameHalfHeight
-    )
-
-    // Draw semi-transparent overlay
-    val overlayPaint = Paint().apply {
-      color = Color.BLACK
-      alpha = 128
-    }
-
-    // Draw overlay with transparent rectangle
-    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), overlayPaint)
-
-    // Clear the frame area
-    val clearPaint = Paint().apply {
-      color = Color.TRANSPARENT
-      xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-    }
-    canvas.drawRect(frameRect!!, clearPaint)
-
-    // Draw frame border
-    val borderPaint = Paint().apply {
-      color = frameColor
-      style = Paint.Style.STROKE
-      strokeWidth = 4f
-    }
-    canvas.drawRect(frameRect!!, borderPaint)
-  }
-
-  fun setEnableFrame(enable: Boolean) {
-    enableFrame = enable
-    invalidate()
-  }
-
-  fun setFrameColor(color: Int) {
-    frameColor = color
-    invalidate()
-  }
-
-  fun setFrameSize(size: FrameSize) {
-    frameSize = size
-    invalidate()
-  }
-
-  fun setBarcodeFrameConfigs(configs: List<BarcodeFrameConfig>) {
-    barcodeFrameConfigs = configs
-    // For now, we'll use the first config or default frame size
-    // In the future, this could be used to dynamically change frame based on detected barcode type
-    invalidate()
-  }
 }
