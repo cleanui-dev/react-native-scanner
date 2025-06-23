@@ -2,9 +2,9 @@ package com.scanner
 
 import android.content.Context
 import android.graphics.*
-import android.hardware.camera2.CameraCharacteristics
 import android.util.AttributeSet
 import android.util.Log
+import android.util.Rational
 import android.util.Size
 import android.view.Surface
 import android.view.View
@@ -17,17 +17,15 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.facebook.react.bridge.*
-import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.uimanager.ThemedReactContext
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import androidx.core.graphics.toColorInt
+import com.scanner.utils.BarcodeFrameManager
 import com.scanner.views.FrameOverlayView
 import com.scanner.views.BarcodeFrameOverlayView
-import java.util.concurrent.ConcurrentHashMap
 
 class ScannerView : FrameLayout {
   private var TAG: String = "ScannerView"
@@ -40,6 +38,7 @@ class ScannerView : FrameLayout {
   private var previewView: PreviewView? = null
   private var overlayView: FrameOverlayView? = null
   private var barcodeFrameOverlayView: BarcodeFrameOverlayView? = null
+
   @Volatile
   private var coordinateTransform: Matrix? = null
 
@@ -56,9 +55,13 @@ class ScannerView : FrameLayout {
   private var torchEnabled: Boolean = false
   private var isScanningPaused: Boolean = false
 
-  // Barcode frame tracking
-  private val activeBarcodeFrames = ConcurrentHashMap<String, BarcodeFrame>()
-  private val frameCleanupExecutor = Executors.newSingleThreadScheduledExecutor()
+  // Throttling
+  private var throttleMs: Int = 300
+  private var lastScannedBarcodeValue: String? = null
+  private var lastScannedBarcodeTimestamp: Long = 0
+
+  // Barcode frame management
+  private val barcodeFrameManager = BarcodeFrameManager()
 
   constructor(context: Context) : super(context) {
     initScannerView(context)
@@ -82,10 +85,10 @@ class ScannerView : FrameLayout {
     }
 
     previewView = PreviewView(context).apply {
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        scaleType = PreviewView.ScaleType.FILL_CENTER
-        implementationMode = PreviewView.ImplementationMode.PERFORMANCE
-        // setBackgroundColor(Color.RED) // Optional: for debugging layout
+      layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+      scaleType = PreviewView.ScaleType.FILL_CENTER
+      implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+      // setBackgroundColor(Color.RED) // Optional: for debugging layout
     }
     installHierarchyFitter(previewView!!)
     addView(previewView)
@@ -108,13 +111,21 @@ class ScannerView : FrameLayout {
     }
     addView(barcodeFrameOverlayView)
 
-    // Start frame cleanup scheduler
-    startFrameCleanupScheduler()
+    // Set up barcode frame manager
+    setupBarcodeFrameManager()
+  }
+
+  private fun setupBarcodeFrameManager() {
+    barcodeFrameManager.setOnFramesChangedListener {
+      // Update the overlay view with current frames
+      val currentFrames = barcodeFrameManager.getActiveFrames()
+      barcodeFrameOverlayView?.setBarcodeBoxes(currentFrames)
+    }
   }
 
   private fun installHierarchyFitter(view: ViewGroup) {
     if (context is ThemedReactContext) { // only react-native setup
-      view.setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener{
+      view.setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener {
         override fun onChildViewRemoved(parent: View?, child: View?) = Unit
         override fun onChildViewAdded(parent: View?, child: View?) {
           parent?.measure(
@@ -136,7 +147,7 @@ class ScannerView : FrameLayout {
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
     stopCamera()
-    frameCleanupExecutor.shutdown()
+    barcodeFrameManager.shutdown()
   }
 
   private fun startCamera() {
@@ -203,7 +214,7 @@ class ScannerView : FrameLayout {
 
       // Image Analysis
       imageAnalyzer = ImageAnalysis.Builder()
-        .setTargetResolution(Size(1280, 720))
+//        .setTargetResolution(Size(1280, 720)) // review this later if needed
         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
         .build()
         .also {
@@ -215,12 +226,26 @@ class ScannerView : FrameLayout {
       // Select back camera as default
       val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
+      // Create a ViewPort that matches the PreviewView
+      val viewPort = ViewPort.Builder(
+        Rational(previewView!!.width, previewView!!.height),
+        previewView!!.display.rotation
+      )
+        .setScaleType(ViewPort.FILL_CENTER) // or FIT_CENTER as needed
+        .build()
+
+      // Create a UseCaseGroup with the ViewPort
+      val useCaseGroup = UseCaseGroup.Builder()
+        .addUseCase(preview!!)
+        .addUseCase(imageAnalyzer!!)
+        .setViewPort(viewPort)
+        .build()
+
       // Bind use cases to camera
       camera = cameraProvider.bindToLifecycle(
         lifecycleOwner,
         cameraSelector,
-        preview,
-        imageAnalyzer
+        useCaseGroup
       )
 
       // Set up torch and zoom
@@ -235,35 +260,35 @@ class ScannerView : FrameLayout {
     }
   }
 
-private fun setupAutoFocusOnFrame() {
-  if (!enableFrame) return
+  private fun setupAutoFocusOnFrame() {
+    if (!enableFrame) return
 
-  val frame = overlayView?.frameRect ?: return
-  val centerX = frame.centerX()
-  val centerY = frame.centerY()
+    val frame = overlayView?.frameRect ?: return
+    val centerX = frame.centerX()
+    val centerY = frame.centerY()
 
-  val viewWidth = previewView?.width ?: return
-  val viewHeight = previewView?.height ?: return
+    val viewWidth = previewView?.width ?: return
+    val viewHeight = previewView?.height ?: return
 
-  val normalizedX = centerX / viewWidth
-  val normalizedY = centerY / viewHeight
+    val normalizedX = centerX / viewWidth
+    val normalizedY = centerY / viewHeight
 
-  val meteringPointFactory = previewView?.meteringPointFactory ?: return
-  val afPoint = meteringPointFactory.createPoint(normalizedX, normalizedY)
+    val meteringPointFactory = previewView?.meteringPointFactory ?: return
+    val afPoint = meteringPointFactory.createPoint(normalizedX, normalizedY)
 
-  val focusAction = FocusMeteringAction.Builder(afPoint, FocusMeteringAction.FLAG_AF)
-    .disableAutoCancel() // Optional: maintain focus
-    .build()
+    val focusAction = FocusMeteringAction.Builder(afPoint, FocusMeteringAction.FLAG_AF)
+      .disableAutoCancel() // Optional: maintain focus
+      .build()
 
-  camera?.cameraControl?.startFocusAndMetering(focusAction)
-    ?.addListener({
-      Log.d(TAG, "Auto-focus to frame center triggered")
-    }, ContextCompat.getMainExecutor(context))
-}
+    camera?.cameraControl?.startFocusAndMetering(focusAction)
+      ?.addListener({
+        Log.d(TAG, "Auto-focus to frame center triggered")
+      }, ContextCompat.getMainExecutor(context))
+  }
 
 
- @OptIn(ExperimentalGetImage::class)
-private fun processImage(imageProxy: ImageProxy) {
+  @OptIn(ExperimentalGetImage::class)
+  private fun processImage(imageProxy: ImageProxy) {
     try {
       // Skip processing if scanning is paused
       if (isScanningPaused) {
@@ -272,55 +297,73 @@ private fun processImage(imageProxy: ImageProxy) {
       }
 
       val mediaImage = imageProxy.image
-  if (mediaImage != null && previewView != null) {
+      if (mediaImage != null && previewView != null) {
         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-    val transformationInfo = ImageAnalysisTransformationInfo(
-      resolution = Size(imageProxy.width, imageProxy.height),
-      rotationDegrees = imageProxy.imageInfo.rotationDegrees
-    )
+        val transformationInfo = ImageAnalysisTransformationInfo(
+          resolution = Size(imageProxy.width, imageProxy.height),
+          rotationDegrees = imageProxy.imageInfo.rotationDegrees
+        )
 
         barcodeScanner.process(image)
           .addOnSuccessListener { barcodes ->
-        // Update barcode frames for all detected barcodes
-        updateBarcodeFrames(barcodes, transformationInfo)
-        
-        // Process barcode detection for the main scanning logic
-        if (barcodes.isNotEmpty()) {
-          val barcode = barcodes[0]
-            val frame = overlayView?.frameRect
-          val barcodeBox = barcode.boundingBox
+            // Update barcode frames for all detected barcodes
+            updateBarcodeFrames(barcodes, transformationInfo)
 
-          if (frame != null && barcodeBox != null && !isScanningPaused) {
-            val transformedBarcodeBox = transformBarcodeBoundingBox(barcodeBox, transformationInfo, previewView!!)
-            if (frame.contains(transformedBarcodeBox)) {
-              Log.d("ScannerView", "Barcode detected inside frame: ${barcode.rawValue}")
+            // Process barcode detection for the main scanning logic
+            if (barcodes.isNotEmpty()) {
+              val barcode = barcodes[0]
+              val frame = overlayView?.frameRect
+              val barcodeBox = barcode.boundingBox
 
-                    val eventData = Arguments.createMap().apply {
-                putString("data", barcode.rawValue)
-                putString("format", barcode.format.toString())
-                        putDouble("timestamp", System.currentTimeMillis().toDouble())
-                    }
-
-                    val ctx = reactContext
-              if (ctx is com.facebook.react.uimanager.ThemedReactContext) {
-                        ctx.runOnUiQueueThread {
-                  ctx
-                    .getJSModule(com.facebook.react.uimanager.events.RCTEventEmitter::class.java)
-                                .receiveEvent(this@ScannerView.id, "onBarcodeScanned", eventData)
-                        }
-                    }
-                } else {
-                Log.d("ScannerView", "Barcode detected outside frame. Ignoring. Frame: $frame, Barcode box (transformed): $transformedBarcodeBox")
-            }
+              if (frame != null && barcodeBox != null && !isScanningPaused) {
+                val currentTime = System.currentTimeMillis()
+                val barcodeValue = barcode.rawValue
+                // Log.d("ScannerView throttleMs", throttleMs.toString());
+                // Check throttling first to avoid expensive frame.contains check
+                if (barcodeValue == lastScannedBarcodeValue && currentTime - lastScannedBarcodeTimestamp < throttleMs) {
+                  // Same barcode within throttle period, skip
+                  return@addOnSuccessListener
                 }
+
+                // Update throttling state
+                lastScannedBarcodeValue = barcodeValue
+                lastScannedBarcodeTimestamp = currentTime
+                Log.d("ScannerView", "Barcode detected inside frame: $barcodeValue")
+
+                val transformedBarcodeBox =
+                  transformBarcodeBoundingBox(barcodeBox, transformationInfo, previewView!!)
+                if (frame.contains(transformedBarcodeBox)) {
+
+
+                  val eventData = Arguments.createMap().apply {
+                    putString("data", barcode.rawValue)
+                    putString("format", barcode.format.toString())
+                    putDouble("timestamp", System.currentTimeMillis().toDouble())
+                  }
+
+                  val ctx = reactContext
+                  if (ctx is com.facebook.react.uimanager.ThemedReactContext) {
+                    ctx.runOnUiQueueThread {
+                      ctx
+                        .getJSModule(com.facebook.react.uimanager.events.RCTEventEmitter::class.java)
+                        .receiveEvent(this@ScannerView.id, "onBarcodeScanned", eventData)
+                    }
+                  }
+                } else {
+                  Log.d(
+                    "ScannerView",
+                    "Barcode detected outside frame. Ignoring. Frame: $frame, Barcode box (transformed): $transformedBarcodeBox"
+                  )
+                }
+              }
             }
           }
-      .addOnFailureListener { e ->
-        Log.e(TAG, "Barcode scanning failed", e)
-      }
-      .addOnCompleteListener {
-        imageProxy.close()
-      }
+          .addOnFailureListener { e ->
+            Log.e(TAG, "Barcode scanning failed", e)
+          }
+          .addOnCompleteListener {
+            imageProxy.close()
+          }
       } else {
         imageProxy.close()
       }
@@ -365,11 +408,11 @@ private fun processImage(imageProxy: ImageProxy) {
     // Apply zoom, respecting the device's limits
     val zoomState = camera?.cameraInfo?.zoomState?.value
     if (zoomState != null) {
-        val newZoom = zoom.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
-        camera?.cameraControl?.setZoomRatio(newZoom)
-        Log.d(TAG, "Setting zoom to $newZoom (requested $zoom)")
+      val newZoom = zoom.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+      camera?.cameraControl?.setZoomRatio(newZoom)
+      Log.d(TAG, "Setting zoom to $newZoom (requested $zoom)")
     } else {
-        camera?.cameraControl?.setZoomRatio(zoom)
+      camera?.cameraControl?.setZoomRatio(zoom)
     }
   }
 
@@ -386,75 +429,41 @@ private fun processImage(imageProxy: ImageProxy) {
 
   fun pauseScanning() {
     isScanningPaused = true
+    // Clear all barcode frames when pausing
+    barcodeFrameManager.clearAllFrames()
     Log.d(TAG, "Scanning paused")
+  }
+
+  fun setThrottleMs(milliseconds: Int) {
+    throttleMs = milliseconds
   }
 
   private fun hasCameraPermission(): Boolean {
     return context.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
   }
 
-  private fun startFrameCleanupScheduler() {
-    frameCleanupExecutor.scheduleAtFixedRate({
-      val currentTime = System.currentTimeMillis()
-      val framesToRemove = mutableListOf<String>()
+  private fun updateBarcodeFrames(
+    barcodes: List<Barcode>,
+    transformationInfo: ImageAnalysisTransformationInfo
+  ) {
+    val barcodeFrames = mutableMapOf<String, RectF>()
 
-      activeBarcodeFrames.forEach { (barcodeValue, frame) ->
-        if (currentTime - frame.lastSeenTime > 1000) { // 1 second timeout
-          framesToRemove.add(barcodeValue)
-        }
-      }
-
-      if (framesToRemove.isNotEmpty()) {
-        framesToRemove.forEach { barcodeValue ->
-          activeBarcodeFrames.remove(barcodeValue)
-        }
-        updateBarcodeFramesDisplay()
-        Log.d(TAG, "Removed ${framesToRemove.size} stale barcode frames")
-      }
-    }, 100, 100, java.util.concurrent.TimeUnit.MILLISECONDS)
-  }
-
-  private fun updateBarcodeFramesDisplay() {
-    val currentFrames = activeBarcodeFrames.values.map { it.rect }.toList()
-    barcodeFrameOverlayView?.setBarcodeBoxes(currentFrames)
-  }
-
-  private fun updateBarcodeFrames(barcodes: List<Barcode>, transformationInfo: ImageAnalysisTransformationInfo) {
-    val currentTime = System.currentTimeMillis()
-    val currentBarcodeValues = mutableSetOf<String>()
-    
     barcodes.forEach { barcode ->
       val barcodeValue = barcode.rawValue ?: return@forEach
-      currentBarcodeValues.add(barcodeValue)
-      
       val boundingBox = barcode.boundingBox ?: return@forEach
+
       val transformedRect = transformBarcodeBoundingBox(
         boundingBox,
         transformationInfo,
         previewView!!
       )
 
-      // Update existing frame or create new one
-      activeBarcodeFrames[barcodeValue] = BarcodeFrame(
-        rect = transformedRect,
-        lastSeenTime = currentTime
-      )
+      barcodeFrames[barcodeValue] = transformedRect
     }
 
-    // Remove frames for barcodes no longer visible
-    val framesToRemove = activeBarcodeFrames.keys.filter { it !in currentBarcodeValues }
-    framesToRemove.forEach { barcodeValue ->
-      activeBarcodeFrames.remove(barcodeValue)
-    }
-
-    // Update display
-    updateBarcodeFramesDisplay()
+    // Update frames using the manager
+    barcodeFrameManager.updateBarcodeFrames(barcodeFrames)
   }
-
-  private data class BarcodeFrame(
-    val rect: RectF,
-    val lastSeenTime: Long
-  )
 }
 
 private data class ImageAnalysisTransformationInfo(

@@ -94,6 +94,11 @@ class ScannerViewManager : SimpleViewManager<ScannerView>() {
     }
   }
 
+  @ReactProp(name = "throttleMs", defaultInt = 300)
+  fun setThrottleMs(view: ScannerView, throttleMs: Int) {
+    view.setThrottleMs(throttleMs)
+  }
+
   // Torch control
   @ReactProp(name = "torch")
   fun setTorch(view: ScannerView?, enabled: Boolean?) {

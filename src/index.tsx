@@ -60,6 +60,9 @@ export interface ScannerViewProps extends ViewProps {
   }) => void;
   onScannerError?: (event: { nativeEvent: ScannerErrorEventPayload }) => void;
   onLoad?: (event: { nativeEvent: OnLoadEventPayload }) => void;
+
+  // Throttling
+  throttleMs?: number;
 }
 
 export default function ScannerView(props: ScannerViewProps) {

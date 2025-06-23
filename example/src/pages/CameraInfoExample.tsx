@@ -120,7 +120,9 @@ export default function CameraInfoExample() {
         {/* Beta Warning */}
         <View style={styles.betaWarning}>
           <Text style={styles.betaWarningText}>
-            ⚠️ Beta: Camera information may be incorrect or incomplete
+            ⚠️ Beta: Camera information may be limited or unreliable because
+            manufacturers often lock full hardware access behind their own
+            system-level applications.
           </Text>
         </View>
 
