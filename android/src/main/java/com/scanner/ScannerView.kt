@@ -48,8 +48,12 @@ class ScannerView : FrameLayout {
   private var enableFrame: Boolean = false
   private var frameColor: Int = Color.WHITE
   private var frameSize: FrameSize = FrameSize.Square(300)
-  private var barcodeFrameConfigs: List<BarcodeFrameConfig> = emptyList()
   private var showBarcodeFramesOnlyInFrame: Boolean = false
+
+  // Focus area and barcode frames configuration
+  private var focusAreaEnabled: Boolean = false
+  private var barcodeFramesEnabled: Boolean = false
+  private var barcodeFramesColor: Int = Color.RED
 
   // React context for event emission
   private var reactContext: ThemedReactContext? = null
@@ -58,10 +62,8 @@ class ScannerView : FrameLayout {
   private var torchEnabled: Boolean = false
   private var isScanningPaused: Boolean = false
 
-  // Throttling
-  private var throttleMs: Int = 300
-  private var lastScannedBarcodeValue: String? = null
-  private var lastScannedBarcodeTimestamp: Long = 0
+  // Barcode scan strategy
+  private var barcodeScanStrategy: String = "ALL"
 
   // Barcode frame management
   private val barcodeFrameManager = BarcodeFrameManager()
@@ -309,56 +311,57 @@ class ScannerView : FrameLayout {
 
         barcodeScanner.process(image)
           .addOnSuccessListener { barcodes ->
-            // Update barcode frames for all detected barcodes
-            updateBarcodeFrames(barcodes, transformationInfo)
-
             // Process barcode detection for the main scanning logic
-            if (barcodes.isNotEmpty()) {
-              val barcode = barcodes[0]
-              val frame = overlayView?.frameRect
-              val barcodeBox = barcode.boundingBox
+            if (barcodes.isNotEmpty() && !isScanningPaused) {
+              val processedBarcodes = processBarcodesAccordingToStrategy(barcodes, transformationInfo)
 
-              if (frame != null && barcodeBox != null && !isScanningPaused) {
+              // Update barcode frames for processed barcodes (filtered)
+              updateBarcodeFrames(processedBarcodes, transformationInfo)
+
+              if (processedBarcodes.isNotEmpty()) {
                 val currentTime = System.currentTimeMillis()
-                val barcodeValue = barcode.rawValue
-                // Log.d("ScannerView throttleMs", throttleMs.toString());
-                // Check throttling first to avoid expensive frame.contains check
-                if (barcodeValue == lastScannedBarcodeValue && currentTime - lastScannedBarcodeTimestamp < throttleMs) {
-                  // Same barcode within throttle period, skip
-                  return@addOnSuccessListener
-                }
 
-                // Update throttling state
-                lastScannedBarcodeValue = barcodeValue
-                lastScannedBarcodeTimestamp = currentTime
-                Log.d("ScannerView", "Barcode detected inside frame: $barcodeValue")
-
-                val transformedBarcodeBox =
-                  transformBarcodeBoundingBox(barcodeBox, transformationInfo, previewView!!)
-                if (frame.contains(transformedBarcodeBox)) {
-
-
+                // Create array of barcode events
+                val barcodeEvents = Arguments.createArray()
+                processedBarcodes.forEach { barcode ->
                   val eventData = Arguments.createMap().apply {
                     putString("data", barcode.rawValue)
                     putString("format", barcode.format.toString())
                     putDouble("timestamp", System.currentTimeMillis().toDouble())
-                  }
 
-                  val ctx = reactContext
-                  if (ctx is ThemedReactContext) {
-                    ctx.runOnUiQueueThread {
-                      ctx
-                        .getJSModule(RCTEventEmitter::class.java)
-                        .receiveEvent(this@ScannerView.id, "onBarcodeScanned", eventData)
+                    // Add bounding box if available
+                    barcode.boundingBox?.let { box ->
+                      val boundingBoxData = Arguments.createMap().apply {
+                        putDouble("left", box.left.toDouble())
+                        putDouble("top", box.top.toDouble())
+                        putDouble("right", box.right.toDouble())
+                        putDouble("bottom", box.bottom.toDouble())
+                      }
+                      putMap("boundingBox", boundingBoxData)
+
+                      // Calculate area
+                      val area = (box.right - box.left) * (box.bottom - box.top)
+                      putDouble("area", area.toDouble())
                     }
                   }
-                } else {
-                  Log.d(
-                    "ScannerView",
-                    "Barcode detected outside frame. Ignoring. Frame: $frame, Barcode box (transformed): $transformedBarcodeBox"
-                  )
+                  barcodeEvents.pushMap(eventData)
+                }
+
+                val ctx = reactContext
+                if (ctx is ThemedReactContext) {
+                  ctx.runOnUiQueueThread {
+                    val eventData = Arguments.createMap().apply {
+                      putArray("barcodes", barcodeEvents)
+                    }
+                    ctx.getJSModule(RCTEventEmitter::class.java)
+                      .receiveEvent(this@ScannerView.id, "onBarcodeScanned", eventData)
+                  }
                 }
               }
+            } else {
+              // TODO: Review this part later
+              // Clear barcode frames when no barcodes are detected or scanning is paused
+             // updateBarcodeFrames(emptyList(), transformationInfo)
             }
           }
           .addOnFailureListener { e ->
@@ -401,14 +404,30 @@ class ScannerView : FrameLayout {
     overlayView?.setFrameSize(size)
   }
 
-  fun setBarcodeFrameConfigs(configs: List<BarcodeFrameConfig>) {
-    barcodeFrameConfigs = configs
-    overlayView?.setBarcodeFrameConfigs(configs)
-  }
-
   fun setShowBarcodeFramesOnlyInFrame(showOnlyInFrame: Boolean) {
     showBarcodeFramesOnlyInFrame = showOnlyInFrame
     Log.d(TAG, "Show barcode frames only in frame: $showOnlyInFrame")
+  }
+
+  // Focus area configuration methods
+  fun setFocusAreaEnabled(enabled: Boolean) {
+    focusAreaEnabled = enabled
+    Log.d(TAG, "Focus area enabled: $enabled")
+  }
+
+  // Barcode frames configuration methods
+  fun setBarcodeFramesEnabled(enabled: Boolean) {
+    barcodeFramesEnabled = enabled
+    Log.d(TAG, "Barcode frames enabled: $enabled")
+  }
+
+  fun setBarcodeFramesColor(color: String) {
+    try {
+      barcodeFramesColor = color.toColorInt()
+      Log.d(TAG, "Barcode frames color set: $color")
+    } catch (e: Exception) {
+      Log.e(TAG, "Invalid barcode frames color format: $color")
+    }
   }
 
   fun setZoom(zoom: Float) {
@@ -442,8 +461,9 @@ class ScannerView : FrameLayout {
     Log.d(TAG, "Scanning paused")
   }
 
-  fun setThrottleMs(milliseconds: Int) {
-    throttleMs = milliseconds
+  fun setBarcodeScanStrategy(strategy: String) {
+    barcodeScanStrategy = strategy
+    Log.d(TAG, "Barcode scan strategy set to: $strategy")
   }
 
   private fun hasCameraPermission(): Boolean {
@@ -454,6 +474,11 @@ class ScannerView : FrameLayout {
     barcodes: List<Barcode>,
     transformationInfo: ImageAnalysisTransformationInfo
   ) {
+    // Only update barcode frames if they are enabled
+    if (!barcodeFramesEnabled) {
+      return
+    }
+
     val barcodeFrames = mutableMapOf<String, RectF>()
 
     barcodes.forEach { barcode ->
@@ -480,6 +505,68 @@ class ScannerView : FrameLayout {
 
     // Update frames using the manager
     barcodeFrameManager.updateBarcodeFrames(barcodeFrames)
+  }
+
+  private fun processBarcodesAccordingToStrategy(
+    barcodes: List<Barcode>,
+    transformationInfo: ImageAnalysisTransformationInfo
+  ): List<Barcode> {
+    if (barcodes.isEmpty()) return emptyList()
+
+    // Filter barcodes based on focus area if enabled
+    val filteredBarcodes = if (focusAreaEnabled) {
+      val frame = overlayView?.frameRect
+      if (frame != null) {
+        barcodes.filter { barcode ->
+          barcode.boundingBox?.let { box ->
+            val transformedBox = transformBarcodeBoundingBox(box, transformationInfo, previewView!!)
+            frame.contains(transformedBox)
+          } ?: false
+        }
+      } else {
+        barcodes
+      }
+    } else {
+      barcodes
+    }
+
+    if (filteredBarcodes.isEmpty()) return emptyList()
+
+    // Apply strategy
+    return when (barcodeScanStrategy) {
+      "ONE" -> {
+        listOf(filteredBarcodes[0])
+      }
+      "BIGGEST" -> {
+        val barcodeWithArea = filteredBarcodes.mapNotNull { barcode ->
+          barcode.boundingBox?.let { box ->
+            val area = (box.right - box.left) * (box.bottom - box.top)
+            barcode to area
+          }
+        }
+        if (barcodeWithArea.isNotEmpty()) {
+          val biggest = barcodeWithArea.maxByOrNull { it.second }
+          listOf(biggest!!.first)
+        } else {
+          listOf(filteredBarcodes[0])
+        }
+      }
+      "SORT_BY_BIGGEST" -> {
+        val barcodeWithArea = filteredBarcodes.mapNotNull { barcode ->
+          barcode.boundingBox?.let { box ->
+            val area = (box.right - box.left) * (box.bottom - box.top)
+            barcode to area
+          }
+        }
+        if (barcodeWithArea.isNotEmpty()) {
+          barcodeWithArea.sortedByDescending { it.second }.map { it.first }
+        } else {
+          filteredBarcodes
+        }
+      }
+      "ALL" -> filteredBarcodes
+      else -> filteredBarcodes // Default to ALL
+    }
   }
 }
 

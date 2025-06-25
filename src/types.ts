@@ -15,14 +15,46 @@ export enum BarcodeFormat {
   ITF = 'ITF',
 }
 
+// Barcode scan strategy enum
+export enum BarcodeScanStrategy {
+  ONE = 'ONE',
+  ALL = 'ALL',
+  BIGGEST = 'BIGGEST',
+  SORT_BY_BIGGEST = 'SORT_BY_BIGGEST',
+}
+
 // Frame size configuration - can be a number (square) or object (rectangle)
 export type FrameSize = number | { width: number; height: number };
 
-// Barcode-specific frame configuration
-export type BarcodeFrameConfig = {
-  format: BarcodeFormat;
-  frameSize: FrameSize;
-  frameColor?: string;
+// Focus area configuration
+export type FocusAreaConfig = {
+  /**
+   * Whether to restrict scanning to focus area only
+   * @default false
+   */
+  enabled?: boolean;
+  /**
+   * Size of the focus area
+   * @default 300
+   */
+  size?: FrameSize;
+  /**
+   * Color of the focus area border
+   * @default '#000000'
+   */
+  color?: string;
+  /**
+   * Whether to draw the focus area overlay
+   * @default false
+   */
+  showOverlay?: boolean;
+};
+
+// Barcode frame configuration
+export type BarcodeFramesConfig = {
+  enabled?: boolean; // Whether to draw frames around detected barcodes
+  color?: string; // Color of barcode frames
+  onlyInFocusArea?: boolean; // Only show frames for barcodes in focus area
 };
 
 // Camera information types
@@ -67,6 +99,13 @@ export type BarcodeScannedEventPayload = {
   data: string;
   format: BarcodeFormat;
   timestamp: number;
+  boundingBox?: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  };
+  area?: number;
 };
 
 // Scanner error event payload
@@ -92,17 +131,17 @@ export type CameraNativeModuleEvents = {
 export type CameraNativeModuleViewProps = {
   // Barcode configuration
   barcodeTypes?: BarcodeFormat[];
-  barcodeFrameConfigs?: BarcodeFrameConfig[];
 
-  // Frame configuration
-  enableFrame?: boolean;
-  frameColor?: string;
-  frameSize?: FrameSize;
-  showBarcodeFramesOnlyInFrame?: boolean;
-  throttleMs?: number;
+  // Focus area configuration
+  focusArea?: FocusAreaConfig;
 
-  // Torch control
+  // Barcode frame configuration
+  barcodeFrames?: BarcodeFramesConfig;
+
+  // Camera configuration
   torch?: boolean;
+  zoom?: number;
+  pauseScanning?: boolean;
 
   // Event handlers
   onBarcodeScanned?: (event: {

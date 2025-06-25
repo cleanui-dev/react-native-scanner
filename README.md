@@ -1,14 +1,14 @@
 # React Native Scanner
 
-A native barcode and QR code scanner for React Native with support for frame overlay, torch control, and multiple barcode formats.
+A native barcode and QR code scanner for React Native with support for focus area overlay, torch control, and multiple barcode formats.
 
 ## Features
 
 - 📱 **Native Performance**: Built with CameraX and ML Kit for optimal performance
-- 🎯 **Frame Overlay**: Optional 200x200 frame overlay for precise scanning
+- 🎯 **Focus Area**: Configurable focus area with optional overlay for precise scanning
 - 🔦 **Torch Control**: Built-in flashlight/torch control
 - 📊 **Multiple Formats**: Support for QR codes, Code128, Code39, EAN, UPC, and more
-- 🎨 **Customizable**: Configurable frame colors and scanning behavior
+- 🎨 **Customizable**: Configurable focus area colors, barcode frame visualization, and scanning behavior
 - 📱 **Cross Platform**: Android support (iOS coming soon)
 
 ## Installation
@@ -65,16 +65,30 @@ const styles = StyleSheet.create({
 });
 ```
 
-### Advanced Scanner with Frame Overlay
+### Scanner with Focus Area
 
 ```tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import ScannerView, { BarcodeFormat } from 'react-native-scanner';
 
-export default function AdvancedScanner() {
+export default function FocusAreaScanner() {
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const [enableFrame, setEnableFrame] = useState(true);
+  
+  // Focus area configuration
+  const focusAreaConfig = {
+    enabled: true,        // Only scan barcodes within the focus area
+    showOverlay: true,    // Show the focus area overlay
+    size: 300,           // Size of the focus area (square)
+    color: '#00FF00',    // Color of the focus area border
+  };
+
+  // Barcode frames configuration
+  const barcodeFramesConfig = {
+    enabled: true,        // Show frames around detected barcodes
+    color: '#FF0000',     // Color of barcode frames
+    onlyInFocusArea: false, // Show frames for all barcodes
+  };
 
   return (
     <View style={styles.container}>
@@ -86,8 +100,8 @@ export default function AdvancedScanner() {
           BarcodeFormat.EAN_13,
           BarcodeFormat.UPC_A,
         ]}
-        enableFrame={enableFrame}
-        frameColor="#00FF00"
+        focusArea={focusAreaConfig}
+        barcodeFrames={barcodeFramesConfig}
         torch={torchEnabled}
         onBarcodeScanned={(event) => {
           console.log('Scanned:', event.nativeEvent.data);
@@ -107,13 +121,6 @@ export default function AdvancedScanner() {
         >
           <Text>Toggle Torch</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.button} 
-          onPress={() => setEnableFrame(!enableFrame)}
-        >
-          <Text>Toggle Frame</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -127,13 +134,56 @@ export default function AdvancedScanner() {
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `barcodeTypes` | `BarcodeFormat[]` | `[BarcodeFormat.QR_CODE]` | Array of barcode formats to scan |
-| `enableFrame` | `boolean` | `false` | Enable 200x200 frame overlay |
-| `frameColor` | `string` | `'#FFFFFF'` | Color of the frame border |
-| `showBarcodeFramesOnlyInFrame` | `boolean` | `false` | Show barcode detection frames only within the frame overlay |
+| `focusArea` | `FocusAreaConfig` | - | Focus area configuration |
+| `barcodeFrames` | `BarcodeFramesConfig` | - | Barcode frame visualization configuration |
 | `torch` | `boolean` | `false` | Enable/disable torch/flashlight |
+| `zoom` | `number` | `1.0` | Camera zoom level |
+| `pauseScanning` | `boolean` | `false` | Pause/resume scanning |
+| `barcodeScanStrategy` | `BarcodeScanStrategy` | `BarcodeScanStrategy.ALL` | Strategy for processing multiple detected barcodes |
 | `onBarcodeScanned` | `function` | - | Callback when barcode is scanned |
 | `onScannerError` | `function` | - | Callback when scanner encounters an error |
 | `onLoad` | `function` | - | Callback when scanner is loaded |
+
+#### FocusAreaConfig
+
+```tsx
+type FocusAreaConfig = {
+  enabled?: boolean;        // Whether to restrict scanning to focus area only
+  size?: FrameSize;         // Size of the focus area
+  color?: string;           // Color of focus area border
+  showOverlay?: boolean;    // Whether to draw the focus area overlay
+};
+```
+
+#### BarcodeFramesConfig
+
+```tsx
+type BarcodeFramesConfig = {
+  enabled?: boolean;        // Whether to draw frames around detected barcodes
+  color?: string;           // Color of barcode frames
+  onlyInFocusArea?: boolean; // Only show frames for barcodes in focus area
+};
+```
+
+#### FrameSize
+
+```tsx
+type FrameSize = number | { width: number; height: number };
+// number: square frame (e.g., 300)
+// object: rectangular frame (e.g., { width: 300, height: 200 })
+```
+
+#### BarcodeScanStrategy
+
+```tsx
+import { BarcodeScanStrategy } from 'react-native-scanner';
+
+// Available strategies:
+BarcodeScanStrategy.ONE              // Process only the first barcode detected
+BarcodeScanStrategy.ALL              // Process all detected barcodes
+BarcodeScanStrategy.BIGGEST          // Process only the largest barcode by area
+BarcodeScanStrategy.SORT_BY_BIGGEST  // Process all barcodes sorted by size (largest first)
+```
 
 ### Barcode Formats
 
@@ -159,11 +209,20 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 #### onBarcodeScanned
 ```tsx
 {
-  nativeEvent: {
-    data: string;           // The scanned barcode data
-    format: BarcodeFormat;  // The format of the scanned barcode
-    timestamp: number;      // Timestamp when scanned
-  }
+  nativeEvent: [
+    {
+      data: string;           // The scanned barcode data
+      format: BarcodeFormat;  // The format of the scanned barcode
+      timestamp: number;      // Timestamp when scanned
+      boundingBox?: {         // Bounding box coordinates (if available)
+        left: number;
+        top: number;
+        right: number;
+        bottom: number;
+      };
+      area?: number;          // Area of the barcode (if available)
+    }
+  ]
 }
 ```
 
@@ -187,27 +246,142 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 }
 ```
 
-## Frame Overlay
+## Focus Area Configuration
 
-When `enableFrame` is set to `true`, the scanner displays a 200x200 pixel frame overlay in the center of the camera view. Only barcodes detected within this frame area will trigger the `onBarcodeScanned` event.
+The focus area feature provides precise control over where barcodes are scanned:
 
-- **With Frame**: Only scans within the 200x200 frame area
-- **Without Frame**: Scans the entire camera view
+### Basic Focus Area
+
+```tsx
+<ScannerView
+  focusArea={{
+    showOverlay: true,    // Show visual overlay
+    size: 300,           // 300x300 pixel square
+    color: '#00FF00',    // Green border
+  }}
+  // Scans entire camera view
+/>
+```
+
+### Focus Area with Restricted Scanning
+
+```tsx
+<ScannerView
+  focusArea={{
+    enabled: true,        // Only scan within focus area
+    showOverlay: true,    // Show visual overlay
+    size: 300,           // 300x300 pixel square
+    color: '#00FF00',    // Green border
+  }}
+  // Only scans within the focus area
+/>
+```
+
+### Rectangular Focus Area
+
+```tsx
+<ScannerView
+  focusArea={{
+    enabled: true,
+    showOverlay: true,
+    size: { width: 300, height: 200 }, // Rectangular focus area
+    color: '#00FF00',
+  }}
+/>
+```
 
 ## Barcode Frame Visualization
 
 The scanner can display visual frames around detected barcodes to help users see what's being scanned:
 
-- **Default behavior**: Shows yellow frames around all detected barcodes
-- **With `showBarcodeFramesOnlyInFrame={true}`**: Only shows frames for barcodes within the frame overlay
-- **Requires `enableFrame={true}`**: The frame overlay must be enabled for this feature to work
+### Show All Barcode Frames
 
 ```tsx
 <ScannerView
-  enableFrame={true}
-  showBarcodeFramesOnlyInFrame={true}
-  frameColor="#00FF00"
-  // ... other props
+  barcodeFrames={{
+    enabled: true,
+    color: '#FF0000',     // Red frames
+    onlyInFocusArea: false, // Show frames for all barcodes
+  }}
+/>
+```
+
+### Show Frames Only in Focus Area
+
+```tsx
+<ScannerView
+  focusArea={{
+    enabled: true,
+    showOverlay: true,
+    size: 300,
+  }}
+  barcodeFrames={{
+    enabled: true,
+    color: '#FF0000',
+    onlyInFocusArea: true, // Only show frames for barcodes in focus area
+  }}
+/>
+```
+
+## Barcode Scan Strategy
+
+The scanner now supports different strategies for processing multiple detected barcodes. The `onBarcodeScanned` event always returns an array of barcodes, even when only one barcode is processed.
+
+### Process All Barcodes (Default)
+
+```tsx
+<ScannerView
+  barcodeScanStrategy={BarcodeScanStrategy.ALL}
+  onBarcodeScanned={(event) => {
+    const barcodes = event.nativeEvent;
+    console.log(`Found ${barcodes.length} barcodes:`, barcodes);
+  }}
+/>
+```
+
+### Process Only the First Barcode
+
+```tsx
+<ScannerView
+  barcodeScanStrategy={BarcodeScanStrategy.ONE}
+  onBarcodeScanned={(event) => {
+    const barcodes = event.nativeEvent;
+    // Will always have 0 or 1 barcode
+    if (barcodes.length > 0) {
+      console.log('First barcode:', barcodes[0]);
+    }
+  }}
+/>
+```
+
+### Process Only the Largest Barcode
+
+```tsx
+<ScannerView
+  barcodeScanStrategy={BarcodeScanStrategy.BIGGEST}
+  onBarcodeScanned={(event) => {
+    const barcodes = event.nativeEvent;
+    // Will always have 0 or 1 barcode (the largest one)
+    if (barcodes.length > 0) {
+      console.log('Largest barcode:', barcodes[0]);
+      console.log('Area:', barcodes[0].area);
+    }
+  }}
+/>
+```
+
+### Process All Barcodes Sorted by Size
+
+```tsx
+<ScannerView
+  barcodeScanStrategy={BarcodeScanStrategy.SORT_BY_BIGGEST}
+  onBarcodeScanned={(event) => {
+    const barcodes = event.nativeEvent;
+    // Barcodes are sorted from largest to smallest
+    barcodes.forEach((barcode, index) => {
+      console.log(`Barcode ${index + 1}:`, barcode.data, 'Area:', barcode.area);
+    });
+  }}
 />
 ```
 
@@ -256,7 +430,7 @@ const requestCameraPermission = async () => {
 
 ## Example
 
-See the `example/` directory for a complete working example.
+See the `example/` directory for complete working examples, including the "New Props Example" that demonstrates the updated prop structure.
 
 ## Contributing
 

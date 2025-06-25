@@ -4,15 +4,13 @@ import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
-import com.scanner.BarcodeFrameConfig
 import com.scanner.FrameSize
 
 // Separate overlay view for frame drawing
 class FrameOverlayView : View {
   private var enableFrame: Boolean = false
   private var frameColor: Int = Color.WHITE
-  private var frameSize: FrameSize = FrameSize.Square(350)
-  private var barcodeFrameConfigs: List<BarcodeFrameConfig> = emptyList()
+  private var frameSize: FrameSize = FrameSize.Square(300)
   var frameRect: RectF? = null
     private set
 
@@ -104,13 +102,6 @@ class FrameOverlayView : View {
 
   fun setFrameSize(size: FrameSize) {
     frameSize = size
-    invalidate()
-  }
-
-  fun setBarcodeFrameConfigs(configs: List<BarcodeFrameConfig>) {
-    barcodeFrameConfigs = configs
-    // For now, we'll use the first config or default frame size
-    // In the future, this could be used to dynamically change frame based on detected barcode type
     invalidate()
   }
 }

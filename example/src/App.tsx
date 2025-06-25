@@ -5,9 +5,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 // Import your screens here
 import HomeScreen from './pages/HomeScreen';
 import FullScreenExample from './pages/FullScreenExample';
+import NewPropsExample from './pages/NewPropsExample';
 import RectangularFrameExample from './pages/RectangularFrameExample';
 import BarcodeFrameExample from './pages/BarcodeFrameExample';
 import CameraInfoExample from './pages/CameraInfoExample';
+import BarcodeScanStrategyExample from './pages/BarcodeScanStrategyExample';
 
 // Import types
 import type { RootStackParamList } from './types/navigation';
@@ -29,6 +31,15 @@ export default function App() {
             component={FullScreenExample}
             options={{
               title: 'Full Screen Example',
+              headerShown: false,
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="NewPropsExample"
+            component={NewPropsExample}
+            options={{
+              title: 'New Props Example',
               headerShown: false,
               gestureEnabled: true,
             }}
@@ -56,6 +67,15 @@ export default function App() {
             component={CameraInfoExample}
             options={{
               title: 'Camera Info',
+              headerShown: false,
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="BarcodeScanStrategyExample"
+            component={BarcodeScanStrategyExample}
+            options={{
+              title: 'Barcode Scan Strategy',
               headerShown: false,
               gestureEnabled: true,
             }}

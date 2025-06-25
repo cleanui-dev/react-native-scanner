@@ -29,6 +29,15 @@ const examples: ExampleCard[] = [
   },
   {
     id: '2',
+    title: 'New Props Example',
+    description:
+      'Demonstrates the new focusArea and barcodeFrames prop structure',
+    route: 'NewPropsExample',
+    icon: '🆕',
+    color: '#FF6B6B',
+  },
+  {
+    id: '3',
     title: 'Rectangular Frame Scanner',
     description:
       'Scanner with rectangular frames optimized for different barcode types',
@@ -37,7 +46,7 @@ const examples: ExampleCard[] = [
     color: '#34C759',
   },
   {
-    id: '3',
+    id: '4',
     title: 'Barcode Frame Visualization',
     description:
       'Demonstrates the new barcode frame visualization feature with frame filtering',
@@ -46,7 +55,7 @@ const examples: ExampleCard[] = [
     color: '#FF6B6B',
   },
   {
-    id: '4',
+    id: '5',
     title: 'Camera Info',
     description: 'Show device camera capabilities (zoom, torch, macro, etc)',
     route: 'CameraInfoExample',
@@ -54,7 +63,16 @@ const examples: ExampleCard[] = [
     color: '#FFD93D',
   },
   {
-    id: '5',
+    id: '6',
+    title: 'Barcode Scan Strategy',
+    description:
+      'Demonstrates different strategies for processing multiple barcodes',
+    route: 'BarcodeScanStrategyExample',
+    icon: '🎯',
+    color: '#9C27B0',
+  },
+  {
+    id: '7',
     title: 'Basic Scanner',
     description: 'Simple scanner without frame overlay (coming soon)',
     route: 'Home', // Placeholder
@@ -62,7 +80,7 @@ const examples: ExampleCard[] = [
     color: '#FF9500',
   },
   {
-    id: '6',
+    id: '8',
     title: 'Custom Frame Scanner',
     description:
       'Scanner with customizable frame size and colors (coming soon)',
@@ -71,7 +89,7 @@ const examples: ExampleCard[] = [
     color: '#AF52DE',
   },
   {
-    id: '7',
+    id: '9',
     title: 'Multi-Format Scanner',
     description:
       'Scanner configured for specific barcode formats (coming soon)',

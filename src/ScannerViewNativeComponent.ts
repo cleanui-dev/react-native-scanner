@@ -17,9 +17,18 @@ export interface NativeProps extends ViewProps {
   zoom?: Double;
   pauseScanning?: boolean;
   onBarcodeScanned?: BubblingEventHandler<{
-    data: string;
-    format: string;
-    timestamp: Double;
+    barcodes: {
+      data: string;
+      format: string;
+      timestamp: Double;
+      boundingBox?: {
+        left: Double;
+        top: Double;
+        right: Double;
+        bottom: Double;
+      };
+      area?: Double;
+    }[];
   }>;
   onScannerError?: BubblingEventHandler<{
     error: string;

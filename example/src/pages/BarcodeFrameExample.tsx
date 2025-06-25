@@ -1,76 +1,133 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
+  Text,
   TouchableOpacity,
   Alert,
-  ScrollView,
+  Platform,
   Switch,
+  ScrollView,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import ScannerView, { BarcodeFormat } from 'react-native-scanner';
-import type { BarcodeScannedEventPayload } from 'react-native-scanner';
+import ScannerView, {
+  BarcodeFormat,
+  BarcodeScanStrategy,
+  type BarcodeScannedEventPayload,
+} from 'react-native-scanner';
+import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 export default function BarcodeFrameExample() {
-  const insets = useSafeAreaInsets();
-  const [scannedData, setScannedData] = useState<string>('');
-  const [enableFrame, setEnableFrame] = useState(true);
-  const [showBarcodeFramesOnlyInFrame, setShowBarcodeFramesOnlyInFrame] =
-    useState(false);
-  const [frameColor, setFrameColor] = useState('#00FF00');
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const [zoom, setZoom] = useState(1.0);
+  const [zoom, setZoom] = useState(1);
   const [pauseScanning, setPauseScanning] = useState(false);
+  const [scannedData, setScannedData] = useState<string | null>(null);
+  const [permission, setPermission] = useState<
+    'granted' | 'denied' | 'blocked' | 'unavailable' | 'limited' | 'loading'
+  >('loading');
 
-  const frameColors = ['#00FF00', '#FF0000', '#0000FF', '#FFFF00', '#FF00FF'];
+  // Focus area configuration
+  const [focusAreaConfig, setFocusAreaConfig] = useState({
+    enabled: false, // Only scan in focus area
+    showOverlay: true, // Show focus area overlay
+    size: { width: 300, height: 100 }, // Rectangular focus area
+    color: '#00FF00', // Color of focus area border
+  });
+
+  // Barcode frames configuration
+  const [barcodeFramesConfig, setBarcodeFramesConfig] = useState({
+    enabled: true, // Show frames around detected barcodes
+    color: '#FF0000', // Color of barcode frames
+    onlyInFocusArea: false, // Show frames for all barcodes, not just in focus area
+  });
+
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    const checkPermission = async () => {
+      setPermission('loading');
+      const result = await check(
+        Platform.OS === 'android'
+          ? PERMISSIONS.ANDROID.CAMERA
+          : PERMISSIONS.IOS.CAMERA
+      );
+      setPermission(result);
+    };
+    checkPermission();
+  }, []);
+
+  const requestPermission = async () => {
+    const result = await request(
+      Platform.OS === 'android'
+        ? PERMISSIONS.ANDROID.CAMERA
+        : PERMISSIONS.IOS.CAMERA
+    );
+    setPermission(result);
+  };
 
   const cycleFrameColor = () => {
-    const currentIndex = frameColors.indexOf(frameColor);
-    const nextIndex = (currentIndex + 1) % frameColors.length;
-    const nextColor = frameColors[nextIndex];
+    const colors = ['#00FF00', '#FF0000', '#0000FF', '#FFFF00', '#FF00FF'];
+    const currentIndex = colors.indexOf(focusAreaConfig.color);
+    const nextIndex = (currentIndex + 1) % colors.length;
+    const nextColor = colors[nextIndex];
     if (nextColor) {
-      setFrameColor(nextColor);
+      setFocusAreaConfig((prev) => ({
+        ...prev,
+        color: nextColor,
+      }));
     }
   };
 
   const handleBarcodeScanned = (event: {
-    nativeEvent: BarcodeScannedEventPayload;
+    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
   }) => {
-    const { data, format } = event.nativeEvent;
-    setScannedData(data);
-    setPauseScanning(true);
+    const barcodes = event.nativeEvent.barcodes;
+    if (barcodes.length === 0) {
+      return;
+    }
 
-    Alert.alert('Barcode Scanned!', `Format: ${format}\nData: ${data}`, [
+    setPauseScanning(true);
+    setScannedData(barcodes[0]!.data);
+
+    Alert.alert(
+      'Barcode Scanned!',
+      `Data: ${barcodes[0]!.data}\nFormat: ${barcodes[0]!.format}`,
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            setPauseScanning(false);
+          },
+        },
+      ],
       {
-        text: 'Scan Again',
-        onPress: () => {
+        onDismiss: () => {
           setPauseScanning(false);
         },
-      },
-      {
-        text: 'OK',
-        style: 'default',
-        onPress: () => {
-          setPauseScanning(false);
-        },
-      },
-    ]);
+      }
+    );
   };
 
   const handleScannerError = (event: {
     nativeEvent: { error: string; code: string };
   }) => {
-    const { error, code } = event.nativeEvent;
-    Alert.alert('Scanner Error', `Error: ${error}\nCode: ${code}`);
+    Alert.alert(
+      'Scanner Error',
+      `Error: ${event.nativeEvent.error}\nCode: ${event.nativeEvent.code}`,
+      [{ text: 'OK' }]
+    );
   };
 
   const handleLoad = (event: {
     nativeEvent: { success: boolean; error?: string };
   }) => {
-    const { success, error } = event.nativeEvent;
-    if (!success) {
-      Alert.alert('Camera Error', error || 'Failed to initialize camera');
+    if (event.nativeEvent.success) {
+      console.log('Scanner loaded successfully');
+    } else {
+      console.error('Scanner failed to load:', event.nativeEvent.error);
     }
   };
 
@@ -79,138 +136,192 @@ export default function BarcodeFrameExample() {
   };
 
   const increaseZoom = () => {
-    setZoom((prev) => Math.min(prev + 0.5, 3.0));
+    setZoom(Math.min(zoom + 0.5, 3));
   };
 
   const decreaseZoom = () => {
-    setZoom((prev) => Math.max(prev - 0.5, 1.0));
+    setZoom(Math.max(zoom - 0.5, 1));
   };
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.scannerContainer}>
-        <ScannerView
-          style={styles.scanner}
-          barcodeTypes={[
-            BarcodeFormat.QR_CODE,
-            BarcodeFormat.CODE_128,
-            BarcodeFormat.CODE_39,
-            BarcodeFormat.EAN_13,
-            BarcodeFormat.EAN_8,
-            BarcodeFormat.UPC_A,
-            BarcodeFormat.UPC_E,
-            BarcodeFormat.DATA_MATRIX,
-            BarcodeFormat.PDF_417,
-            BarcodeFormat.AZTEC,
-            BarcodeFormat.ITF,
-          ]}
-          enableFrame={enableFrame}
-          frameColor={frameColor}
-          showBarcodeFramesOnlyInFrame={showBarcodeFramesOnlyInFrame}
-          torch={torchEnabled}
-          zoom={zoom}
-          pauseScanning={pauseScanning}
-          onBarcodeScanned={handleBarcodeScanned}
-          onScannerError={handleScannerError}
-          onLoad={handleLoad}
-          frameSize={{ width: 300, height: 100 }}
-        />
+  if (permission === 'loading') {
+    return <Text>Checking camera permission...</Text>;
+  }
+
+  if (permission === RESULTS.DENIED) {
+    return (
+      <View style={styles.container}>
+        <Text>Camera permission is required</Text>
+        <TouchableOpacity style={styles.button} onPress={requestPermission}>
+          <Text style={styles.buttonText}>Grant Permission</Text>
+        </TouchableOpacity>
       </View>
+    );
+  }
 
-      <ScrollView
-        style={styles.controlsContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.controlSection}>
-          <Text style={styles.sectionTitle}>Barcode Frame Visualization</Text>
+  if (permission === RESULTS.BLOCKED) {
+    return (
+      <View style={styles.container}>
+        <Text>Camera permission is blocked. Please enable it in settings.</Text>
+      </View>
+    );
+  }
 
-          <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Enable Frame Overlay</Text>
-            <Switch
-              value={enableFrame}
-              onValueChange={setEnableFrame}
-              trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={enableFrame ? '#f5dd4b' : '#f4f3f4'}
-            />
-          </View>
-
-          <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>
-              Show Barcode Frames Only in Frame
-            </Text>
-            <Switch
-              value={showBarcodeFramesOnlyInFrame}
-              onValueChange={setShowBarcodeFramesOnlyInFrame}
-              trackColor={{ false: '#767577', true: '#81b0ff' }}
-              thumbColor={showBarcodeFramesOnlyInFrame ? '#f5dd4b' : '#f4f3f4'}
-              disabled={!enableFrame}
-            />
-          </View>
-
-          <Text style={styles.description}>
-            {showBarcodeFramesOnlyInFrame
-              ? 'Yellow frames will only appear around barcodes detected within the green frame overlay.'
-              : 'Yellow frames will appear around all detected barcodes, regardless of position.'}
-          </Text>
+  return (
+    <SafeAreaProvider>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.scannerContainer}>
+          <ScannerView
+            style={styles.scanner}
+            barcodeTypes={[
+              BarcodeFormat.QR_CODE,
+              BarcodeFormat.CODE_128,
+              BarcodeFormat.CODE_39,
+              BarcodeFormat.EAN_13,
+              BarcodeFormat.EAN_8,
+              BarcodeFormat.UPC_A,
+              BarcodeFormat.UPC_E,
+              BarcodeFormat.DATA_MATRIX,
+              BarcodeFormat.PDF_417,
+              BarcodeFormat.AZTEC,
+              BarcodeFormat.ITF,
+            ]}
+            focusArea={focusAreaConfig}
+            barcodeFrames={barcodeFramesConfig}
+            torch={torchEnabled}
+            zoom={zoom}
+            pauseScanning={pauseScanning}
+            onBarcodeScanned={handleBarcodeScanned}
+            onScannerError={handleScannerError}
+            onLoad={handleLoad}
+            barcodeScanStrategy={BarcodeScanStrategy.ONE}
+          />
         </View>
 
-        <View style={styles.controlSection}>
-          <Text style={styles.sectionTitle}>Frame Configuration</Text>
+        <ScrollView
+          style={styles.controlsContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.controlSection}>
+            <Text style={styles.sectionTitle}>Barcode Frame Visualization</Text>
 
-          <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Frame Color</Text>
-            <TouchableOpacity style={styles.button} onPress={cycleFrameColor}>
-              <Text style={styles.buttonText}>Change Color</Text>
-            </TouchableOpacity>
-          </View>
+            <View style={styles.controlRow}>
+              <Text style={styles.controlLabel}>Enable Focus Area</Text>
+              <Switch
+                value={focusAreaConfig.showOverlay}
+                onValueChange={(value) =>
+                  setFocusAreaConfig((prev) => ({
+                    ...prev,
+                    showOverlay: value,
+                  }))
+                }
+                trackColor={{ false: '#767577', true: '#81b0ff' }}
+                thumbColor={focusAreaConfig.showOverlay ? '#f5dd4b' : '#f4f3f4'}
+              />
+            </View>
 
-          <View style={styles.colorPreview}>
-            <View
-              style={[styles.colorSwatch, { backgroundColor: frameColor }]}
-            />
-            <Text style={styles.colorText}>{frameColor}</Text>
-          </View>
-        </View>
+            <View style={styles.controlRow}>
+              <Text style={styles.controlLabel}>Enable Barcode Frames</Text>
+              <Switch
+                value={barcodeFramesConfig.enabled}
+                onValueChange={(value) =>
+                  setBarcodeFramesConfig((prev) => ({
+                    ...prev,
+                    enabled: value,
+                  }))
+                }
+                trackColor={{ false: '#767577', true: '#81b0ff' }}
+                thumbColor={barcodeFramesConfig.enabled ? '#f5dd4b' : '#f4f3f4'}
+              />
+            </View>
 
-        <View style={styles.controlSection}>
-          <Text style={styles.sectionTitle}>Camera Controls</Text>
-
-          <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Torch</Text>
-            <TouchableOpacity style={styles.button} onPress={toggleTorch}>
-              <Text style={styles.buttonText}>
-                {torchEnabled ? '🔦 OFF' : '🔦 ON'}
+            <View style={styles.controlRow}>
+              <Text style={styles.controlLabel}>
+                Show Barcode Frames Only in Focus Area
               </Text>
-            </TouchableOpacity>
+              <Switch
+                value={barcodeFramesConfig.onlyInFocusArea}
+                onValueChange={(value) =>
+                  setBarcodeFramesConfig((prev) => ({
+                    ...prev,
+                    onlyInFocusArea: value,
+                  }))
+                }
+                trackColor={{ false: '#767577', true: '#81b0ff' }}
+                thumbColor={
+                  barcodeFramesConfig.onlyInFocusArea ? '#f5dd4b' : '#f4f3f4'
+                }
+                disabled={!focusAreaConfig.showOverlay}
+              />
+            </View>
+
+            <Text style={styles.description}>
+              {barcodeFramesConfig.onlyInFocusArea
+                ? 'Red frames will only appear around barcodes detected within the green focus area overlay.'
+                : 'Red frames will appear around all detected barcodes, regardless of position.'}
+            </Text>
           </View>
 
-          <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Zoom: {zoom.toFixed(1)}x</Text>
-            <View style={styles.zoomControls}>
-              <TouchableOpacity
-                style={styles.smallButton}
-                onPress={decreaseZoom}
-              >
-                <Text style={styles.buttonText}>-</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.smallButton}
-                onPress={increaseZoom}
-              >
-                <Text style={styles.buttonText}>+</Text>
+          <View style={styles.controlSection}>
+            <Text style={styles.sectionTitle}>Focus Area Configuration</Text>
+
+            <View style={styles.controlRow}>
+              <Text style={styles.controlLabel}>Focus Area Color</Text>
+              <TouchableOpacity style={styles.button} onPress={cycleFrameColor}>
+                <Text style={styles.buttonText}>Change Color</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
 
-        {scannedData ? (
-          <View style={styles.controlSection}>
-            <Text style={styles.sectionTitle}>Last Scanned</Text>
-            <Text style={styles.scannedData}>{scannedData}</Text>
+            <View style={styles.colorPreview}>
+              <View
+                style={[
+                  styles.colorSwatch,
+                  { backgroundColor: focusAreaConfig.color },
+                ]}
+              />
+              <Text style={styles.colorText}>{focusAreaConfig.color}</Text>
+            </View>
           </View>
-        ) : null}
-      </ScrollView>
-    </View>
+
+          <View style={styles.controlSection}>
+            <Text style={styles.sectionTitle}>Camera Controls</Text>
+
+            <View style={styles.controlRow}>
+              <Text style={styles.controlLabel}>Torch</Text>
+              <TouchableOpacity style={styles.button} onPress={toggleTorch}>
+                <Text style={styles.buttonText}>
+                  {torchEnabled ? '🔦 OFF' : '🔦 ON'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.controlRow}>
+              <Text style={styles.controlLabel}>Zoom: {zoom.toFixed(1)}x</Text>
+              <View style={styles.zoomControls}>
+                <TouchableOpacity
+                  style={styles.smallButton}
+                  onPress={decreaseZoom}
+                >
+                  <Text style={styles.buttonText}>-</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.smallButton}
+                  onPress={increaseZoom}
+                >
+                  <Text style={styles.buttonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          {scannedData ? (
+            <View style={styles.controlSection}>
+              <Text style={styles.sectionTitle}>Last Scanned</Text>
+              <Text style={styles.scannedData}>{scannedData}</Text>
+            </View>
+          ) : null}
+        </ScrollView>
+      </View>
+    </SafeAreaProvider>
   );
 }
 
@@ -297,10 +408,10 @@ const styles = StyleSheet.create({
   colorText: {
     fontSize: 14,
     color: '#333',
-    fontFamily: 'monospace',
   },
   zoomControls: {
     flexDirection: 'row',
+    alignItems: 'center',
   },
   scannedData: {
     fontSize: 14,

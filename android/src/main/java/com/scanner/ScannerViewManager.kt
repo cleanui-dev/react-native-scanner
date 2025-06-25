@@ -34,69 +34,59 @@ class ScannerViewManager : SimpleViewManager<ScannerView>() {
     }
   }
 
-  @ReactProp(name = "barcodeFrameConfigs")
-  fun setBarcodeFrameConfigs(view: ScannerView?, configs: ReadableArray?) {
-    if (configs != null) {
-      val configList = mutableListOf<BarcodeFrameConfig>()
-      for (i in 0 until configs.size()) {
-        val config = configs.getMap(i)
-        if (config != null) {
-          val format = config.getString("format") ?: ""
-          val frameSize = config.getDynamic("frameSize")
-          val frameColor = config.getString("frameColor")
-          
-          val size: FrameSize = when {
-            frameSize.type == ReadableType.Number -> FrameSize.Square(frameSize.asInt())
-            frameSize.type == ReadableType.Map -> {
-              val frameSizeMap = frameSize.asMap()
-              val width = frameSizeMap.getInt("width")
-              val height = frameSizeMap.getInt("height")
-              FrameSize.Rectangle(width, height)
-            }
-            else -> FrameSize.Square(350) // Default
+  // Focus area configuration
+  @ReactProp(name = "focusArea")
+  fun setFocusArea(view: ScannerView?, focusArea: ReadableMap?) {
+    if (focusArea != null) {
+      val enabled = focusArea.getBoolean("enabled") ?: false
+      val showOverlay = focusArea.getBoolean("showOverlay") ?: false
+      val color = focusArea.getString("color")
+      val size = focusArea.getDynamic("size")
+      
+      // Set focus area properties
+      view?.setFocusAreaEnabled(enabled)
+      view?.setEnableFrame(showOverlay)
+      
+      if (color != null) {
+        view?.setFrameColor(color)
+      }
+      
+      if (size != null) {
+        val frameSize: FrameSize = when {
+          size.type == ReadableType.Number -> FrameSize.Square(size.asInt())
+          size.type == ReadableType.Map -> {
+            val frameSizeMap = size.asMap()
+            val width = frameSizeMap.getInt("width")
+            val height = frameSizeMap.getInt("height")
+            FrameSize.Rectangle(width, height)
           }
-          
-          configList.add(BarcodeFrameConfig(format, size, frameColor))
+          else -> FrameSize.Square(300) // Default
         }
+        view?.setFrameSize(frameSize)
       }
-      view?.setBarcodeFrameConfigs(configList)
-      Log.d("ScannerViewManager", "Barcode frame configs set: $configList")
+      
+      Log.d("ScannerViewManager", "Focus area configured: enabled=$enabled, showOverlay=$showOverlay, color=$color")
     }
   }
 
-  // Frame configuration
-  @ReactProp(name = "enableFrame")
-  fun setEnableFrame(view: ScannerView?, enable: Boolean?) {
-    view?.setEnableFrame(enable ?: false)
-  }
-
-  @ReactProp(name = "frameColor")
-  fun setFrameColor(view: ScannerView?, color: String?) {
-    if (color != null) {
-      view?.setFrameColor(color)
-    }
-  }
-
-  @ReactProp(name = "frameSize")
-  fun setFrameSize(view: ScannerView?, frameSize: Dynamic?) {
-    if (frameSize != null) {
-      val size: FrameSize = when {
-        frameSize.type == ReadableType.Number -> FrameSize.Square(frameSize.asInt())
-        frameSize.type == ReadableType.Map -> {
-          val frameSizeMap = frameSize.asMap()
-          val width = frameSizeMap.getInt("width")
-          val height = frameSizeMap.getInt("height")
-        FrameSize.Rectangle(width, height)
-        }
-        else -> FrameSize.Square(350) // Default
+  // Barcode frames configuration
+  @ReactProp(name = "barcodeFrames")
+  fun setBarcodeFrames(view: ScannerView?, barcodeFrames: ReadableMap?) {
+    if (barcodeFrames != null) {
+      val enabled = barcodeFrames.getBoolean("enabled") ?: false
+      val color = barcodeFrames.getString("color")
+      val onlyInFocusArea = barcodeFrames.getBoolean("onlyInFocusArea") ?: false
+      
+      // Set barcode frames properties
+      view?.setBarcodeFramesEnabled(enabled)
+      view?.setShowBarcodeFramesOnlyInFrame(onlyInFocusArea)
+      
+      if (color != null) {
+        view?.setBarcodeFramesColor(color)
       }
-      view?.setFrameSize(size)
+      
+      Log.d("ScannerViewManager", "Barcode frames configured: enabled=$enabled, onlyInFocusArea=$onlyInFocusArea, color=$color")
     }
-  }
-
-  @ReactProp(name = "throttleMs", defaultInt = 300)
-  fun setThrottleMs(view: ScannerView, throttleMs: Int) {
-    view.setThrottleMs(throttleMs)
   }
 
   // Torch control
@@ -125,13 +115,6 @@ class ScannerViewManager : SimpleViewManager<ScannerView>() {
     Log.d("ScannerViewManager", "onLoad event handler registered")
   }
 
-  // // Legacy prop for backward compatibility
-  // @ReactProp(name = "color")
-  // fun setColor(view: ScannerView?, color: String?) {
-  //   // This is kept for backward compatibility but doesn't affect the scanner
-  //   Log.w("ScannerViewManager", "setColor is deprecated. Use frameColor instead.")
-  // }
-
   @ReactProp(name = "zoom")
   fun setZoom(view: ScannerView?, zoom: Double) {
     view?.setZoom(zoom.toFloat())
@@ -146,10 +129,9 @@ class ScannerViewManager : SimpleViewManager<ScannerView>() {
     }
   }
 
-  @ReactProp(name = "showBarcodeFramesOnlyInFrame")
-  fun setShowBarcodeFramesOnlyInFrame(view: ScannerView?, showOnlyInFrame: Boolean?) {
-    view?.setShowBarcodeFramesOnlyInFrame(showOnlyInFrame ?: false)
-    Log.d("ScannerViewManager", "Show barcode frames only in frame: $showOnlyInFrame")
+  @ReactProp(name = "barcodeScanStrategy")
+  fun setBarcodeScanStrategy(view: ScannerView?, strategy: String?) {
+    view?.setBarcodeScanStrategy(strategy ?: "ALL")
   }
 
   companion object {
@@ -173,9 +155,3 @@ sealed class FrameSize {
   data class Square(val size: Int) : FrameSize()
   data class Rectangle(val width: Int, val height: Int) : FrameSize()
 }
-
-data class BarcodeFrameConfig(
-  val format: String,
-  val frameSize: FrameSize,
-  val frameColor: String? = null
-)

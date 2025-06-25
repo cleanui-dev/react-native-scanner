@@ -4,15 +4,16 @@ import type {
   BarcodeScannedEventPayload,
   ScannerErrorEventPayload,
   OnLoadEventPayload,
-  FrameSize,
-  BarcodeFrameConfig,
+  FocusAreaConfig,
+  BarcodeFramesConfig,
 } from './types';
-import { BarcodeFormat } from './types';
+import { BarcodeFormat, BarcodeScanStrategy } from './types';
 
-export { BarcodeFormat } from './types';
+export { BarcodeFormat, BarcodeScanStrategy } from './types';
 export type {
   FrameSize,
-  BarcodeFrameConfig,
+  FocusAreaConfig,
+  BarcodeFramesConfig,
   BarcodeScannedEventPayload,
   ScannerErrorEventPayload,
   OnLoadEventPayload,
@@ -28,46 +29,87 @@ export type { UseCameraInfoReturn } from './hooks/useCameraInfo';
 
 const ScannerViewNativeComponent = requireNativeComponent<{
   barcodeTypes?: BarcodeFormat[];
-  barcodeFrameConfigs?: BarcodeFrameConfig[];
-  enableFrame?: boolean;
-  frameColor?: string;
-  frameSize?: FrameSize;
-  showBarcodeFramesOnlyInFrame?: boolean;
+  focusArea?: FocusAreaConfig;
+  barcodeFrames?: BarcodeFramesConfig;
   torch?: boolean;
   zoom?: number;
   pauseScanning?: boolean;
+  barcodeScanStrategy?: BarcodeScanStrategy;
   onBarcodeScanned?: (event: {
-    nativeEvent: BarcodeScannedEventPayload;
+    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
   }) => void;
   onScannerError?: (event: { nativeEvent: ScannerErrorEventPayload }) => void;
   onLoad?: (event: { nativeEvent: OnLoadEventPayload }) => void;
 }>('ScannerView');
 
 export interface ScannerViewProps extends ViewProps {
-  // Barcode configuration
+  /**
+   * Array of barcode formats to scan for.
+   * If not specified, all supported formats will be scanned.
+   */
   barcodeTypes?: BarcodeFormat[];
-  barcodeFrameConfigs?: BarcodeFrameConfig[];
 
-  // Frame configuration
-  enableFrame?: boolean;
-  frameColor?: string;
-  frameSize?: FrameSize;
-  showBarcodeFramesOnlyInFrame?: boolean;
+  /**
+   * Configuration for the focus area overlay.
+   * Defines the visual indicator for where the scanner should focus.
+   */
+  focusArea?: FocusAreaConfig;
 
-  // Camera configuration
+  /**
+   * Configuration for barcode frame overlays.
+   * Defines visual indicators that appear when barcodes are detected.
+   */
+  barcodeFrames?: BarcodeFramesConfig;
+
+  /**
+   * Controls the camera torch/flashlight.
+   * @default false
+   */
   torch?: boolean;
+
+  /**
+   * Controls the camera zoom level.
+   * Values typically range from 1.0 (no zoom) to higher values for zoomed in view.
+   * @default 1.0
+   */
   zoom?: number;
+
+  /**
+   * Pauses or resumes barcode scanning.
+   * When true, the scanner will not process barcode detection.
+   * @default false
+   */
   pauseScanning?: boolean;
 
-  // Event handlers
-  onBarcodeScanned?: (event: {
-    nativeEvent: BarcodeScannedEventPayload;
-  }) => void;
-  onScannerError?: (event: { nativeEvent: ScannerErrorEventPayload }) => void;
-  onLoad?: (event: { nativeEvent: OnLoadEventPayload }) => void;
+  /**
+   * Strategy for processing multiple detected barcodes.
+   * - ONE: Process only the first barcode detected
+   * - ALL: Process all detected barcodes
+   * - BIGGEST: Process only the largest barcode by area
+   * - SORT_BY_BIGGEST: Process all barcodes sorted by size (largest first)
+   * @default BarcodeScanStrategy.ALL
+   */
+  barcodeScanStrategy?: BarcodeScanStrategy;
 
-  // Throttling
-  throttleMs?: number;
+  /**
+   * Callback function triggered when a barcode is successfully scanned.
+   * Provides the scanned barcode data and metadata.
+   */
+  onBarcodeScanned?: (event: {
+    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
+  }) => void;
+
+  /**
+   * Callback function triggered when a scanner error occurs.
+   * Provides error details and context.
+   */
+  onScannerError?: (event: { nativeEvent: ScannerErrorEventPayload }) => void;
+
+  /**
+   * Callback function triggered when the scanner view is loaded and ready.
+   * Provides camera information and initialization status.
+   */
+  onLoad?: (event: { nativeEvent: OnLoadEventPayload }) => void;
 }
 
 export default function ScannerView(props: ScannerViewProps) {

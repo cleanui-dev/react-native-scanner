@@ -9,7 +9,11 @@ import {
   Button,
   StatusBar,
 } from 'react-native';
-import ScannerView, { BarcodeFormat } from 'react-native-scanner';
+import ScannerView, {
+  BarcodeFormat,
+  BarcodeScanStrategy,
+  type BarcodeScannedEventPayload,
+} from 'react-native-scanner';
 import {
   check,
   request,
@@ -80,9 +84,12 @@ const useReliableInsets = (immersive: boolean = false) => {
 
 function FullScreenExample() {
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const [enableFrame, setEnableFrame] = useState(true);
-  const [frameColor, setFrameColor] = useState('#00FF00');
-  const [frameSize, setFrameSize] = useState(300);
+  const [focusAreaConfig, setFocusAreaConfig] = useState({
+    enabled: false, // Only scan in focus area
+    showOverlay: true, // Show focus area overlay
+    size: 300, // Size of focus area
+    color: '#00FF00', // Color of focus area border
+  });
   const [zoom, setZoom] = useState(1);
   const [immersive, setImmersive] = useState(true); // Default to immersive mode
   const [extendToGestureArea, setExtendToGestureArea] = useState(true); // Extend UI to gesture area
@@ -118,15 +125,25 @@ function FullScreenExample() {
   };
 
   const handleBarcodeScanned = (event: {
-    nativeEvent: { data: string; format: string; timestamp: number };
+    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
   }) => {
+    console.log('handleBarcodeScanned', event.nativeEvent.barcodes);
+    const barcodes = event.nativeEvent.barcodes;
+    if (barcodes.length === 0) {
+      return;
+    }
+
+    const barcode = barcodes[0]!;
+    if (!barcode) {
+      return;
+    }
     // return;
     // Pause scanning to prevent multiple scans
     setPauseScanning(true);
 
     Alert.alert(
       'Barcode Scanned!',
-      `Data: ${event.nativeEvent.data}\nFormat: ${event.nativeEvent.format}`,
+      `Data: ${barcode.data}\nFormat: ${barcode.format}`,
       [
         {
           text: 'OK',
@@ -169,16 +186,25 @@ function FullScreenExample() {
     setTorchEnabled(!torchEnabled);
   };
 
-  const toggleFrame = () => {
-    setEnableFrame(!enableFrame);
+  const toggleFocusAreaEnabled = () => {
+    setFocusAreaConfig((prev) => ({
+      ...prev,
+      enabled: !prev.enabled,
+    }));
   };
 
-  const changeFrameColor = () => {
-    setFrameColor(frameColor === '#00FF00' ? '#FF0000' : '#00FF00');
+  const changeFocusAreaColor = () => {
+    setFocusAreaConfig((prev) => ({
+      ...prev,
+      color: prev.color === '#00FF00' ? '#FF0000' : '#00FF00',
+    }));
   };
 
-  const changeFrameSize = () => {
-    setFrameSize(frameSize === 300 ? 250 : 300);
+  const changeFocusAreaSize = () => {
+    setFocusAreaConfig((prev) => ({
+      ...prev,
+      size: prev.size === 300 ? 250 : 300,
+    }));
   };
 
   const changeZoom = () => {
@@ -247,15 +273,14 @@ function FullScreenExample() {
             BarcodeFormat.AZTEC,
             BarcodeFormat.ITF,
           ]}
-          enableFrame={enableFrame}
-          frameColor={frameColor}
-          frameSize={frameSize}
+          focusArea={focusAreaConfig}
           torch={torchEnabled}
           zoom={zoom}
           onBarcodeScanned={handleBarcodeScanned}
           onScannerError={handleScannerError}
           onLoad={handleLoad}
           pauseScanning={pauseScanning}
+          barcodeScanStrategy={BarcodeScanStrategy.ONE}
         />
       </View>
 
@@ -268,16 +293,22 @@ function FullScreenExample() {
               {torchEnabled ? '🔦 OFF' : '🔦 ON'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={toggleFrame}>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={toggleFocusAreaEnabled}
+          >
             <Text style={styles.buttonText}>
-              {enableFrame ? '📐 Hide' : '📐 Show'}
+              {focusAreaConfig.enabled ? '📐 Hide' : '📐 Show'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={changeFrameColor}>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={changeFocusAreaColor}
+          >
             <Text style={styles.buttonText}>🎨 Color</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={changeFrameSize}>
-            <Text style={styles.buttonText}>📏 {frameSize}px</Text>
+          <TouchableOpacity style={styles.button} onPress={changeFocusAreaSize}>
+            <Text style={styles.buttonText}>📏 {focusAreaConfig.size}px</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.button} onPress={changeZoom}>
             <Text style={styles.buttonText}>🔍 {zoom.toFixed(1)}x</Text>
@@ -310,7 +341,7 @@ function FullScreenExample() {
         ]}
       >
         <Text style={styles.status}>
-          Frame: {enableFrame ? 'ON' : 'OFF'} | Torch:{' '}
+          Frame: {focusAreaConfig.enabled ? 'ON' : 'OFF'} | Torch:{' '}
           {torchEnabled ? 'ON' : 'OFF'} | Zoom: {zoom.toFixed(1)}x | Mode:{' '}
           {immersive ? 'Immersive' : 'Fixed Nav Buttons'} | Gesture:{' '}
           {extendToGestureArea ? 'Extended' : 'Respected'}
