@@ -41,9 +41,18 @@ using namespace facebook::react;
     const auto &oldViewProps = *std::static_pointer_cast<ScannerViewProps const>(_props);
     const auto &newViewProps = *std::static_pointer_cast<ScannerViewProps const>(props);
 
-    if (oldViewProps.color != newViewProps.color) {
-        NSString * colorToConvert = [[NSString alloc] initWithUTF8String: newViewProps.color.c_str()];
-        [_view setBackgroundColor:[self hexStringToColor:colorToConvert]];
+    // Update background color when frameColor changes (hex string like "#RRGGBB" or "RRGGBB")
+    if (oldViewProps.frameColor != newViewProps.frameColor) {
+        NSString *colorToConvert = newViewProps.frameColor.empty()
+            ? nil
+            : [[NSString alloc] initWithUTF8String:newViewProps.frameColor.c_str()];
+        UIColor *color = [self hexStringToColor:colorToConvert];
+        if (color) {
+            [_view setBackgroundColor:color];
+        } else {
+            // Optionally clear or keep previous color if invalid
+            // [_view setBackgroundColor:UIColor.clearColor];
+        }
     }
 
     [super updateProps:props oldProps:oldProps];
@@ -54,18 +63,35 @@ Class<RCTComponentViewProtocol> ScannerViewCls(void)
     return ScannerView.class;
 }
 
-- hexStringToColor:(NSString *)stringToConvert
+- (UIColor *)hexStringToColor:(NSString *)stringToConvert
 {
+    if (stringToConvert == nil || stringToConvert.length == 0) {
+        return nil;
+    }
+
     NSString *noHashString = [stringToConvert stringByReplacingOccurrencesOfString:@"#" withString:@""];
+
+    // Support shorthand like "FFF"
+    if (noHashString.length == 3) {
+        unichar chars[3];
+        [noHashString getCharacters:chars range:NSMakeRange(0, 3)];
+        noHashString = [NSString stringWithFormat:@"%C%C%C%C%C%C",
+                        chars[0], chars[0], chars[1], chars[1], chars[2], chars[2]];
+    }
+
+    if (noHashString.length != 6) {
+        return nil;
+    }
+
+    unsigned hex = 0;
     NSScanner *stringScanner = [NSScanner scannerWithString:noHashString];
-
-    unsigned hex;
     if (![stringScanner scanHexInt:&hex]) return nil;
-    int r = (hex >> 16) & 0xFF;
-    int g = (hex >> 8) & 0xFF;
-    int b = (hex) & 0xFF;
 
-    return [UIColor colorWithRed:r / 255.0f green:g / 255.0f blue:b / 255.0f alpha:1.0f];
+    CGFloat r = ((hex >> 16) & 0xFF) / 255.0;
+    CGFloat g = ((hex >> 8) & 0xFF) / 255.0;
+    CGFloat b = (hex & 0xFF) / 255.0;
+
+    return [UIColor colorWithRed:r green:g blue:b alpha:1.0];
 }
 
 @end
