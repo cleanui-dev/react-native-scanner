@@ -4,6 +4,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { RootStackParamList, NavigationProp } from '../types/navigation';
@@ -153,7 +154,9 @@ export default function HomeScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Built with CameraX and ML Kit for optimal performance
+            {Platform.OS === 'android'
+              ? 'Built with CameraX and ML Kit for optimal performance'
+              : 'Built with AVFoundation for optimal performance'}
           </Text>
         </View>
       </ScrollView>
