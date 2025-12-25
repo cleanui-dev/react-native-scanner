@@ -23,13 +23,18 @@ class CoordinateTransformer: CoordinateTransformationProtocol {
     static func transformVisionRectToViewRect(_ visionRect: CGRect,
                                              viewSize: CGSize,
                                              previewLayer: AVCaptureVideoPreviewLayer?) -> CGRect {
-        // Implementation:
-        // 1. Convert from normalized (0-1) to view size
-        // 2. Flip Y-axis (Vision uses bottom-left, UIKit uses top-left)
-        // 3. Account for preview layer's video gravity if provided
-        // 4. Return transformed rectangle
+        // Step 1: Denormalize from 0-1 to view size
+        var rect = denormalizeRect(visionRect, toSize: viewSize)
         
-        return .zero
+        // Step 2: Flip Y-axis (Vision uses bottom-left, UIKit uses top-left)
+        rect = flipYAxis(rect, containerHeight: viewSize.height)
+        
+        // Step 3: Account for preview layer's video gravity if provided
+        if let layer = previewLayer {
+            rect = accountForVideoGravity(rect, previewLayer: layer)
+        }
+        
+        return rect
     }
     
     /// Transform view coordinates to Vision framework coordinates
@@ -41,9 +46,21 @@ class CoordinateTransformer: CoordinateTransformationProtocol {
     static func transformViewRectToVisionRect(_ viewRect: CGRect,
                                              viewSize: CGSize,
                                              previewLayer: AVCaptureVideoPreviewLayer?) -> CGRect {
-        // Implementation: Reverse transformation of above
+        var rect = viewRect
         
-        return .zero
+        // Step 1: Account for video gravity if provided (reverse)
+        if let _ = previewLayer {
+            // Note: This is simplified; full implementation would reverse the video gravity transformation
+            rect = viewRect
+        }
+        
+        // Step 2: Flip Y-axis (UIKit to Vision)
+        rect = flipYAxis(rect, containerHeight: viewSize.height)
+        
+        // Step 3: Normalize from view size to 0-1
+        rect = normalizeRect(rect, fromSize: viewSize)
+        
+        return rect
     }
     
     // MARK: - Private Helper Methods
@@ -84,7 +101,8 @@ class CoordinateTransformer: CoordinateTransformationProtocol {
     ///   - size: Source size
     /// - Returns: Normalized rectangle (0-1)
     private static func normalizeRect(_ rect: CGRect, fromSize size: CGSize) -> CGRect {
-        // Implementation: Scale from actual to normalized coordinates
+        guard size.width > 0 && size.height > 0 else { return .zero }
+        
         return CGRect(
             x: rect.minX / size.width,
             y: rect.minY / size.height,
@@ -98,11 +116,16 @@ class CoordinateTransformer: CoordinateTransformationProtocol {
     ///   - rect: Rectangle to transform
     ///   - previewLayer: The preview layer
     /// - Returns: Transformed rectangle
-    private static func accountForVideoGravity(_ rect: CGRect, 
+    private static func accountForVideoGravity(_ rect: CGRect,
                                               previewLayer: AVCaptureVideoPreviewLayer) -> CGRect {
-        // Implementation: 
-        // Use previewLayer.layerRectConverted(fromMetadataOutputRect:) if available
-        // Or manually calculate based on videoGravity (ResizeAspectFill, ResizeAspect, etc.)
+        // Use the preview layer's built-in transformation if available
+        // This accounts for ResizeAspectFill, ResizeAspect, etc.
+        
+        // For most cases with ResizeAspectFill, the rect is already correct
+        // because we're working in the same coordinate space as the view
+        
+        // Advanced: Could use layerRectConverted(fromMetadataOutputRect:)
+        // but that's for metadata coordinates, not Vision coordinates
         
         return rect
     }

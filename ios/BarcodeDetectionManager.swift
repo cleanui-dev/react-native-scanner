@@ -51,7 +51,29 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
     /// Detect barcodes in a sample buffer
     /// - Parameter sampleBuffer: The sample buffer to analyze
     func detectBarcodes(in sampleBuffer: CMSampleBuffer) {
-        // Implementation: Create Vision request and process
+        guard !scanningPaused else { return }
+        
+        guard let pixelBuffer = getPixelBuffer(from: sampleBuffer) else {
+            return
+        }
+        
+        let request = createDetectionRequest()
+        let orientation = getImageOrientation(from: sampleBuffer)
+        
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                           orientation: orientation,
+                                           options: [:])
+        
+        detectionQueue.async { [weak self] in
+            do {
+                try handler.perform([request])
+            } catch {
+                print("[BarcodeDetectionManager] Detection failed: \(error)")
+                DispatchQueue.main.async {
+                    self?.delegate?.barcodeDetectionManager(self!, didFailWith: error)
+                }
+            }
+        }
     }
     
     /// Detect barcodes in a CMSampleBuffer with completion
@@ -60,19 +82,60 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
     ///   - completion: Completion handler with observations
     func detectBarcodes(in sampleBuffer: CMSampleBuffer,
                        completion: @escaping ([VNBarcodeObservation]) -> Void) {
-        // Implementation: Async detection with callback
+        guard !scanningPaused else {
+            completion([])
+            return
+        }
+        
+        guard let pixelBuffer = getPixelBuffer(from: sampleBuffer) else {
+            completion([])
+            return
+        }
+        
+        let request = VNDetectBarcodesRequest { request, error in
+            if let error = error {
+                print("[BarcodeDetectionManager] Detection error: \(error)")
+                completion([])
+                return
+            }
+            
+            guard let results = request.results as? [VNBarcodeObservation] else {
+                completion([])
+                return
+            }
+            
+            completion(results)
+        }
+        
+        request.symbologies = supportedSymbologies
+        
+        let orientation = getImageOrientation(from: sampleBuffer)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                           orientation: orientation,
+                                           options: [:])
+        
+        detectionQueue.async {
+            do {
+                try handler.perform([request])
+            } catch {
+                print("[BarcodeDetectionManager] Detection failed: \(error)")
+                completion([])
+            }
+        }
     }
     
     // MARK: - BarcodeScannerProtocol Methods
     
     /// Pause barcode scanning
     func pauseScanning() {
-        // Implementation: Set paused flag
+        scanningPaused = true
+        print("[BarcodeDetectionManager] Scanning paused")
     }
     
     /// Resume barcode scanning
     func resumeScanning() {
-        // Implementation: Clear paused flag
+        scanningPaused = false
+        print("[BarcodeDetectionManager] Scanning resumed")
     }
     
     /// Check if scanning is paused
@@ -85,13 +148,23 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
     /// Set the barcode formats to detect
     /// - Parameter formats: Array of barcode formats
     func setBarcodeFormats(_ formats: [BarcodeFormat]) {
-        // Implementation: Convert to symbologies
+        if formats.isEmpty {
+            // If empty, use all supported formats
+            supportedSymbologies = [
+                .qr, .code128, .code39, .ean13, .ean8,
+                .upce, .pdf417, .aztec, .dataMatrix, .itf14
+            ]
+        } else {
+            supportedSymbologies = formats.map { $0.visionSymbology }
+        }
+        print("[BarcodeDetectionManager] Barcode formats updated: \(supportedSymbologies)")
     }
     
     /// Set the scan strategy
     /// - Parameter strategy: The scan strategy to use
     func setScanStrategy(_ strategy: BarcodeScanStrategy) {
-        // Implementation: Update strategy
+        scanStrategy = strategy
+        print("[BarcodeDetectionManager] Scan strategy set to: \(strategy.rawValue)")
     }
     
     // MARK: - Private Methods
@@ -99,8 +172,13 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
     /// Create a barcode detection request
     /// - Returns: Configured VNDetectBarcodesRequest
     private func createDetectionRequest() -> VNDetectBarcodesRequest {
-        // Implementation: Create and configure request
-        return VNDetectBarcodesRequest()
+        let request = VNDetectBarcodesRequest { [weak self] request, error in
+            self?.handleDetectionResults(request: request, error: error)
+        }
+        
+        request.symbologies = supportedSymbologies
+        
+        return request
     }
     
     /// Process detection results
@@ -108,22 +186,43 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
     ///   - request: The completed request
     ///   - error: Any error that occurred
     private func handleDetectionResults(request: VNRequest, error: Error?) {
-        // Implementation: Extract observations and notify delegate
+        if let error = error {
+            print("[BarcodeDetectionManager] Detection error: \(error)")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.barcodeDetectionManager(self, didFailWith: error)
+            }
+            return
+        }
+        
+        guard let results = request.results as? [VNBarcodeObservation] else {
+            return
+        }
+        
+        // Filter out barcodes without valid payload
+        let validBarcodes = results.filter { $0.payloadStringValue != nil }
+        
+        if !validBarcodes.isEmpty {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.barcodeDetectionManager(self, didDetect: validBarcodes)
+            }
+        }
     }
     
     /// Get pixel buffer from sample buffer
     /// - Parameter sampleBuffer: The sample buffer
     /// - Returns: Pixel buffer or nil
     private func getPixelBuffer(from sampleBuffer: CMSampleBuffer) -> CVPixelBuffer? {
-        // Implementation: Extract pixel buffer
-        return nil
+        return CMSampleBufferGetImageBuffer(sampleBuffer)
     }
     
     /// Get image orientation from sample buffer
     /// - Parameter sampleBuffer: The sample buffer
     /// - Returns: CGImagePropertyOrientation
     private func getImageOrientation(from sampleBuffer: CMSampleBuffer) -> CGImagePropertyOrientation {
-        // Implementation: Determine orientation
+        // For most cases, .up works well
+        // In production, you might want to account for device orientation
         return .up
     }
 }

@@ -29,7 +29,9 @@ function NewPropsExample() {
     enabled: false, // Only scan in focus area
     showOverlay: true, // Show focus area overlay
     size: 300, // Size of focus area
-    color: '#00FF00', // Color of focus area border
+    borderColor: '#00FF00', // Color of focus area border
+    tintColor: '#000000', // Overlay tint base (native applies ~50% alpha like Android)
+    position: { x: 50, y: 50 }, // Center (0-100)
   });
 
   // Barcode frames configuration
@@ -134,7 +136,7 @@ function NewPropsExample() {
   const changeFocusAreaColor = () => {
     setFocusAreaConfig((prev) => ({
       ...prev,
-      color: prev.color === '#00FF00' ? '#FF0000' : '#00FF00',
+      borderColor: prev.borderColor === '#00FF00' ? '#FF0000' : '#00FF00',
     }));
   };
 

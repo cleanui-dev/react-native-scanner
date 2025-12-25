@@ -45,57 +45,126 @@ class BarcodeFrameManager {
     /// Update barcode frames with new detections
     /// - Parameter frames: Dictionary mapping barcode data to rectangles
     func updateBarcodeFrames(_ frames: [String: CGRect]) {
-        // Implementation:
-        // 1. Update or add frames with current timestamp
-        // 2. Remove frames not in current detection
-        // 3. Schedule cleanup if needed
-        // 4. Notify observers
+        queue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            let now = Date()
+            let currentKeys = Set(frames.keys)
+            
+            // Update or add frames with current timestamp
+            for (key, rect) in frames {
+                self.activeFrames[key] = BarcodeFrame(rect: rect, lastSeenTime: now)
+            }
+            
+            // Remove frames not in current detection
+            self.activeFrames = self.activeFrames.filter { currentKeys.contains($0.key) }
+            
+            // Schedule cleanup if we have frames
+            if !self.activeFrames.isEmpty {
+                DispatchQueue.main.async {
+                    self.scheduleCleanup()
+                }
+            }
+            
+            // Notify observers
+            self.notifyFramesChanged()
+        }
     }
     
     /// Get current active frames for display
     /// - Returns: Array of active frame rectangles
     func getActiveFrames() -> [CGRect] {
-        // Implementation: Thread-safe access to active frames
-        return []
+        return queue.sync {
+            return activeFrames.values.map { $0.rect }
+        }
     }
     
     /// Clear all barcode frames immediately
     func clearAllFrames() {
-        // Implementation:
-        // 1. Cancel cleanup timer
-        // 2. Clear all frames
-        // 3. Notify observers
+        queue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            let hadFrames = !self.activeFrames.isEmpty
+            self.activeFrames.removeAll()
+            
+            DispatchQueue.main.async {
+                self.cleanupTimer?.invalidate()
+                self.cleanupTimer = nil
+                
+                if hadFrames {
+                    self.notifyFramesChanged()
+                }
+            }
+        }
     }
     
     /// Shutdown the manager and cleanup resources
     func shutdown() {
-        // Implementation: Stop timer and clear resources
+        clearAllFrames()
+        print("[BarcodeFrameManager] Shutdown")
     }
     
     // MARK: - Private Methods
     
     /// Schedule cleanup of stale frames
     private func scheduleCleanup() {
-        // Implementation:
-        // 1. Cancel existing timer
-        // 2. Schedule new timer with frameTimeout delay
+        // Cancel existing timer
+        cleanupTimer?.invalidate()
+        
+        // Schedule new timer
+        cleanupTimer = Timer.scheduledTimer(
+            timeInterval: frameTimeout,
+            target: self,
+            selector: #selector(cleanupStaleFrames),
+            userInfo: nil,
+            repeats: false
+        )
     }
     
     /// Clean up stale frames
     @objc private func cleanupStaleFrames() {
-        // Implementation:
-        // 1. Get current time
-        // 2. Remove frames older than timeout
-        // 3. Notify if frames were removed
-        // 4. Reschedule if frames remain
+        queue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            let now = Date()
+            let countBefore = self.activeFrames.count
+            
+            // Remove frames older than timeout
+            self.activeFrames = self.activeFrames.filter { _, frame in
+                now.timeIntervalSince(frame.lastSeenTime) < self.frameTimeout
+            }
+            
+            let framesRemoved = countBefore - self.activeFrames.count
+            
+            if framesRemoved > 0 {
+                print("[BarcodeFrameManager] Removed \(framesRemoved) stale frame(s)")
+                self.notifyFramesChanged()
+            }
+            
+            // Reschedule if frames remain
+            if !self.activeFrames.isEmpty {
+                DispatchQueue.main.async {
+                    self.scheduleCleanup()
+                }
+            } else {
+                print("[BarcodeFrameManager] No more frames to monitor")
+            }
+        }
     }
     
     /// Notify observers of frame changes
     private func notifyFramesChanged() {
-        // Implementation:
-        // 1. Get current frames
-        // 2. Call delegate on main thread
-        // 3. Call callback on main thread
+        let currentFrames = activeFrames.values.map { $0.rect }
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Call delegate
+            self.delegate?.barcodeFrameManager(self, didUpdateFrames: currentFrames)
+            
+            // Call callback
+            self.onFramesChanged?(currentFrames)
+        }
     }
     
     deinit {
