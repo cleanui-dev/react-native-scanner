@@ -1,5 +1,5 @@
 import type { ViewProps } from 'react-native';
-import { requireNativeComponent } from 'react-native';
+import ScannerViewNativeComponent from './ScannerViewNativeComponent';
 import type {
   BarcodeScannedEventPayload,
   ScannerErrorEventPayload,
@@ -27,21 +27,24 @@ export type {
 export { useCameraInfo } from './hooks/useCameraInfo';
 export type { UseCameraInfoReturn } from './hooks/useCameraInfo';
 
-const ScannerViewNativeComponent = requireNativeComponent<{
-  barcodeTypes?: BarcodeFormat[];
-  focusArea?: FocusAreaConfig;
-  barcodeFrames?: BarcodeFramesConfig;
-  torch?: boolean;
-  zoom?: number;
-  pauseScanning?: boolean;
-  barcodeScanStrategy?: BarcodeScanStrategy;
-  keepScreenOn?: boolean;
-  onBarcodeScanned?: (event: {
-    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
-  }) => void;
-  onScannerError?: (event: { nativeEvent: ScannerErrorEventPayload }) => void;
-  onLoad?: (event: { nativeEvent: OnLoadEventPayload }) => void;
-}>('ScannerView');
+/**
+ * @deprecated Use the new Fabric component instead
+ */
+// const ScannerViewNativeComponent = requireNativeComponent<{
+//   barcodeTypes?: BarcodeFormat[];
+//   focusArea?: FocusAreaConfig;
+//   barcodeFrames?: BarcodeFramesConfig;
+//   torch?: boolean;
+//   zoom?: number;
+//   pauseScanning?: boolean;
+//   barcodeScanStrategy?: BarcodeScanStrategy;
+//   keepScreenOn?: boolean;
+//   onBarcodeScanned?: (event: {
+//     nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
+//   }) => void;
+//   onScannerError?: (event: { nativeEvent: ScannerErrorEventPayload }) => void;
+//   onLoad?: (event: { nativeEvent: OnLoadEventPayload }) => void;
+// }>('ScannerView');
 
 export interface ScannerViewProps extends ViewProps {
   /**
@@ -121,5 +124,72 @@ export interface ScannerViewProps extends ViewProps {
 }
 
 export default function ScannerView(props: ScannerViewProps) {
-  return <ScannerViewNativeComponent {...props} />;
+  // Map the props to match the native component interface
+  const {
+    onBarcodeScanned,
+    onScannerError,
+    onLoad,
+    barcodeTypes,
+    focusArea,
+    barcodeFrames,
+    barcodeScanStrategy,
+    keepScreenOn,
+    ...restProps
+  } = props;
+
+  const nativeProps = {
+    ...restProps,
+    barcodeTypes: barcodeTypes?.map(String),
+
+    // --- IMPORTANT: codegen does NOT support mixed types for focusArea.size.
+    // Our public API supports number | {width,height}, so we normalize to {width,height}.
+    focusArea: focusArea
+      ? {
+          enabled: focusArea.enabled,
+          showOverlay: focusArea.showOverlay,
+          borderColor: focusArea.borderColor,
+          tintColor: focusArea.tintColor,
+          size:
+            typeof focusArea.size === 'number'
+              ? { width: focusArea.size, height: focusArea.size }
+              : focusArea.size,
+          position: focusArea.position,
+        }
+      : undefined,
+
+    barcodeFrames: barcodeFrames
+      ? {
+          enabled: barcodeFrames.enabled,
+          color: barcodeFrames.color,
+          onlyInFocusArea: barcodeFrames.onlyInFocusArea,
+        }
+      : undefined,
+
+    barcodeScanStrategy: barcodeScanStrategy
+      ? barcodeScanStrategy.toString()
+      : undefined,
+
+    keepScreenOn: keepScreenOn,
+
+    onBarcodeScanned: onBarcodeScanned
+      ? (event: any) => {
+          // Convert native event to typed event
+          const typedEvent = {
+            nativeEvent: {
+              barcodes: event.nativeEvent.barcodes.map((barcode: any) => ({
+                ...barcode,
+                format: barcode.format as BarcodeFormat,
+              })),
+            },
+          };
+          onBarcodeScanned(typedEvent);
+        }
+      : undefined,
+    onScannerError: onScannerError
+      ? (event: any) => onScannerError(event)
+      : undefined,
+    onLoad: onLoad ? (event: any) => onLoad(event) : undefined,
+  };
+
+  return <ScannerViewNativeComponent {...nativeProps} />;
 }

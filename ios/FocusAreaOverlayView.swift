@@ -22,8 +22,9 @@ class FocusAreaOverlayView: UIView, FocusAreaProtocol {
         didSet { setNeedsDisplay() }
     }
     
-    /// Tint color for the overlay (semi-transparent)
-    var tintColor: UIColor = UIColor.black.withAlphaComponent(0.5) {
+    /// Tint color for the overlay (semi-transparent).
+    /// Use a custom property name to avoid clashing with UIView.tintColor.
+    var overlayTintColor: UIColor = UIColor.black.withAlphaComponent(0.5) {
         didSet { setNeedsDisplay() }
     }
     
@@ -39,6 +40,11 @@ class FocusAreaOverlayView: UIView, FocusAreaProtocol {
     
     /// The calculated frame rectangle in view coordinates
     private(set) var frameRect: CGRect = .zero
+
+    // MARK: - Layers (more reliable than draw/blend modes)
+
+    private let overlayLayer = CAShapeLayer()
+    private let borderLayer = CAShapeLayer()
     
     // MARK: - Initialization
     
@@ -56,46 +62,64 @@ class FocusAreaOverlayView: UIView, FocusAreaProtocol {
         // Implementation: Configure view properties
         backgroundColor = .clear
         isUserInteractionEnabled = false
+        isOpaque = false
+
+        overlayLayer.fillRule = .evenOdd
+        overlayLayer.fillColor = overlayTintColor.cgColor
+        overlayLayer.isHidden = true
+        layer.addSublayer(overlayLayer)
+
+        borderLayer.fillColor = UIColor.clear.cgColor
+        borderLayer.strokeColor = borderColor.cgColor
+        borderLayer.lineWidth = 4.0
+        borderLayer.isHidden = true
+        layer.addSublayer(borderLayer)
     }
     
-    // MARK: - Drawing
-    
-    override func draw(_ rect: CGRect) {
-        super.draw(rect)
-        
-        guard isOverlayVisible, let context = UIGraphicsGetCurrentContext() else {
-            return
-        }
-        
-        // Implementation: Draw overlay with clear center and border
-        drawOverlay(in: context, rect: rect)
-    }
-    
-    /// Draw the focus area overlay
-    /// - Parameters:
-    ///   - context: Graphics context
-    ///   - rect: Drawing rectangle
-    private func drawOverlay(in context: CGContext, rect: CGRect) {
-        // Implementation: 
-        // 1. Calculate frame position based on percentage
-        // 2. Draw semi-transparent overlay covering entire view
-        // 3. Clear the focus area rectangle
-        // 4. Draw border around focus area
+    // MARK: - Layer Updates
+
+    private func updateLayers() {
+        frameRect = calculateFrameRect()
+
+        // Overlay cutout path (even-odd fill)
+        let path = UIBezierPath(rect: bounds)
+        path.append(UIBezierPath(rect: frameRect))
+
+        overlayLayer.frame = bounds
+        overlayLayer.path = path.cgPath
+        overlayLayer.fillColor = overlayTintColor.cgColor
+        overlayLayer.isHidden = !isOverlayVisible
+
+        // Border path
+        borderLayer.frame = bounds
+        borderLayer.path = UIBezierPath(rect: frameRect).cgPath
+        borderLayer.strokeColor = borderColor.cgColor
+        borderLayer.isHidden = (!isOverlayVisible) || (borderColor == .clear)
     }
     
     /// Calculate the focus area frame rectangle
     /// - Returns: The calculated frame rectangle
     private func calculateFrameRect() -> CGRect {
-        // Implementation: Calculate frame position based on percentage and size
-        return .zero
+        // Calculate center position based on percentage
+        let centerX = bounds.width * (position.x / 100.0)
+        let centerY = bounds.height * (position.y / 100.0)
+        
+        // Create rectangle centered at calculated position
+        let rect = CGRect(
+            x: centerX - frameSize.width / 2,
+            y: centerY - frameSize.height / 2,
+            width: frameSize.width,
+            height: frameSize.height
+        )
+        
+        return rect
     }
     
     // MARK: - Layout
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Implementation: Recalculate frame rect on layout changes
-        frameRect = calculateFrameRect()
+        updateLayers()
     }
     
     // MARK: - FocusAreaProtocol Methods
@@ -103,7 +127,13 @@ class FocusAreaOverlayView: UIView, FocusAreaProtocol {
     /// Update focus area configuration
     /// - Parameter config: The new configuration
     func updateFocusArea(config: FocusAreaConfig) {
-        // Implementation: Update all properties from config
+        isOverlayVisible = config.showOverlay
+        borderColor = config.borderColor
+        overlayTintColor = config.tintColor
+        frameSize = config.size.size
+        position = config.position
+
+        updateLayers()
     }
     
     /// Get the current focus area frame in view coordinates
@@ -117,16 +147,13 @@ class FocusAreaOverlayView: UIView, FocusAreaProtocol {
     /// - Parameter point: The point to check
     /// - Returns: True if the point is within the focus area
     func isPointInFocusArea(_ point: CGPoint) -> Bool {
-        // Implementation: Check if point is in frame rect
-        return false
+        return frameRect.contains(point)
     }
     
     /// Check if a rectangle intersects or is contained in the focus area
     /// - Parameter rect: The rectangle to check
     /// - Returns: True if the rectangle intersects or is contained
     func isRectInFocusArea(_ rect: CGRect) -> Bool {
-        // Implementation: Check intersection or containment
-        return false
+        return frameRect.intersects(rect) || frameRect.contains(rect)
     }
 }
-

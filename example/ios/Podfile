@@ -1,11 +1,16 @@
 ENV['RCT_NEW_ARCH_ENABLED'] = '1'
 
-# Resolve react_native_pods.rb with node to allow for hoisting
-require Pod::Executable.execute_command('node', ['-p',
-  'require.resolve(
-    "react-native/scripts/react_native_pods.rb",
-    {paths: [process.argv[1]]},
-  )', __dir__]).strip
+def node_require(script)
+  # Resolve script with node to allow for hoisting
+  require Pod::Executable.execute_command('node', ['-p',
+    "require.resolve(
+      '#{script}',
+      {paths: [process.argv[1]]},
+    )", __dir__]).strip
+end
+
+node_require('react-native/scripts/react_native_pods.rb')
+node_require('react-native-permissions/scripts/setup.rb')
 
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
@@ -18,6 +23,11 @@ end
 
 target 'ScannerExample' do
   config = use_native_modules!
+
+  # Setup permissions for react-native-permissions
+  setup_permissions([
+    'Camera',
+  ])
 
   use_react_native!(
     :path => config[:reactNativePath],

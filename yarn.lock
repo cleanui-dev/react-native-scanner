@@ -10439,9 +10439,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-permissions@npm:^5.4.1":
-  version: 5.4.1
-  resolution: "react-native-permissions@npm:5.4.1"
+"react-native-permissions@npm:^5.4.4":
+  version: 5.4.4
+  resolution: "react-native-permissions@npm:5.4.4"
   peerDependencies:
     react: ">=18.1.0"
     react-native: ">=0.70.0"
@@ -10449,7 +10449,7 @@ __metadata:
   peerDependenciesMeta:
     react-native-windows:
       optional: true
-  checksum: ef3951cd9ff50299fa427d3bf939f4f02183b246fe4bd79a519cfa62b575d3e82ab6f5f31066620208df03f0c0b1b49c28ce9bd995ef0419300436256a7a099d
+  checksum: 43deb38d03321c6b23c7f9f6e1561a629e3aff1e4be20e643ff85010f040b82d707a7db43179108a203663cd138da2f3b6d954f1b278f44ed85797ec49bbacb1
   languageName: node
   linkType: hard
 
@@ -10483,7 +10483,7 @@ __metadata:
     react-native: 0.79.2
     react-native-builder-bob: ^0.40.12
     react-native-monorepo-config: ^0.1.9
-    react-native-permissions: ^5.4.1
+    react-native-permissions: ^5.4.4
     react-native-safe-area-context: ^5.5.0
     react-native-screens: ^4.11.1
     react-native-system-navigation-bar: ^2.6.4

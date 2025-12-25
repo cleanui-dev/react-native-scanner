@@ -10,12 +10,14 @@ import AVFoundation
 import Vision
 
 /// Main scanner view that manages camera, detection, and overlays
-@objc class ScannerViewImpl: UIView {
+@objc(ScannerViewImpl)
+@objcMembers
+class ScannerViewImpl: UIView {
     
     // MARK: - Public Properties
     
     /// Delegate for scanner events
-    @objc weak var delegate: ScannerViewDelegate?
+    @objc public weak var delegate: ScannerViewDelegate?
     
     // MARK: - Private Properties
     
@@ -43,6 +45,13 @@ import Vision
     private var scanStrategy: BarcodeScanStrategy
     private var isPaused: Bool
     private var keepScreenOn: Bool
+    private var isPreviewLayerAdded: Bool = false
+
+    // Remember torch state so we can re-apply after camera starts
+    private var requestedTorchEnabled: Bool = false
+
+    // Track visibility so we can stop the camera when this view isn't on-screen (no JS hooks needed)
+    private var isViewVisible: Bool = false
     
     // MARK: - Initialization
     
@@ -63,9 +72,17 @@ import Vision
         
         super.init(frame: frame)
         
+        print("[ScannerViewImpl] 🚀 Initializing ScannerViewImpl with frame: \(frame)")
         setupView()
         setupDelegates()
         setupCamera()
+        print("[ScannerViewImpl] ✅ ScannerViewImpl initialization complete")
+    }
+    
+    @objc convenience init(frame: CGRect, delegate: ScannerViewDelegate?) {
+        self.init(frame: frame)
+        self.delegate = delegate
+        print("[ScannerViewImpl] ✅ Delegate set via convenience initializer")
     }
     
     required init?(coder: NSCoder) {
@@ -76,17 +93,38 @@ import Vision
     
     /// Setup the view hierarchy and layout
     private func setupView() {
-        // Implementation: Add subviews and configure layout
+        backgroundColor = .black
+        
+        // Add subviews in order (bottom to top)
+        addSubview(focusAreaOverlay)
+        addSubview(barcodeFrameOverlay)
+        
+        // Configure autoresizing masks
+        focusAreaOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        barcodeFrameOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        
+        print("[ScannerViewImpl] View hierarchy setup complete")
     }
     
     /// Setup delegates for all managers
     private func setupDelegates() {
-        // Implementation: Set self as delegate for managers
+        cameraManager.delegate = self
+        barcodeDetectionManager.delegate = self
+        frameManager.delegate = self
+        
+        // Setup frame manager callback
+        frameManager.onFramesChanged = { [weak self] frames in
+            self?.barcodeFrameOverlay.setBarcodeBoxes(frames)
+        }
+        
+        print("[ScannerViewImpl] Delegates configured")
     }
     
     /// Setup the camera and start preview
     private func setupCamera() {
-        // Implementation: Initialize camera and start session
+        // Don't start camera here. Fabric/Navigation may create the view before it is on-screen.
+        // We'll start/stop based on actual visibility in `updateVisibility`.
+        print("[ScannerViewImpl] 📷 Camera will start when view becomes visible")
     }
     
     // MARK: - Public Configuration Methods
@@ -94,65 +132,155 @@ import Vision
     /// Set barcode formats to detect
     /// - Parameter formats: Array of format strings
     @objc func setBarcodeTypes(_ formats: [String]) {
-        // Implementation: Convert strings to BarcodeFormat and configure
+        let barcodeFormats = formats.compactMap { BarcodeFormat(rawValue: $0) }
+        barcodeDetectionManager.setBarcodeFormats(barcodeFormats)
+        print("[ScannerViewImpl] Barcode types set: \(formats)")
     }
     
     /// Configure focus area
     /// - Parameter config: Focus area configuration dictionary
     @objc func configureFocusArea(_ config: [String: Any]) {
-        // Implementation: Parse dictionary and update focus area
+        focusAreaConfig = FocusAreaConfig.from(dict: config)
+        focusAreaOverlay.updateFocusArea(config: focusAreaConfig)
+        print("[ScannerViewImpl] Focus area configured")
     }
     
     /// Configure barcode frames
     /// - Parameter config: Barcode frames configuration dictionary
     @objc func configureBarcodeFrames(_ config: [String: Any]) {
-        // Implementation: Parse dictionary and update barcode frames
+        barcodeFramesConfig = BarcodeFramesConfig.from(dict: config)
+        barcodeFrameOverlay.updateBarcodeFrames(config: barcodeFramesConfig)
+        print("[ScannerViewImpl] Barcode frames configured")
     }
     
     /// Set torch enabled/disabled
     /// - Parameter enabled: Whether torch should be enabled
-    @objc func setTorchEnabled(_ enabled: Bool) {
-        // Implementation: Control torch
+    @objc func setTorchEnabled(_ enabled: NSNumber) {
+        let value = enabled.boolValue
+        print("[ScannerViewImpl] Torch requested: \(value)")
+        requestedTorchEnabled = value
+        cameraManager.setTorch(enabled: value)
     }
     
     /// Set zoom level
     /// - Parameter zoom: The zoom level
-    @objc func setZoomLevel(_ zoom: Double) {
-        // Implementation: Control zoom
+    @objc func setZoomLevel(_ zoom: NSNumber) {
+        cameraManager.setZoom(level: CGFloat(zoom.doubleValue))
     }
     
     /// Pause or resume scanning
     /// - Parameter paused: Whether scanning should be paused
-    @objc func setPauseScanning(_ paused: Bool) {
-        // Implementation: Control scanning state
+    @objc func setPauseScanning(_ paused: NSNumber) {
+        let value = paused.boolValue
+        isPaused = value
+        if value {
+            barcodeDetectionManager.pauseScanning()
+            frameManager.clearAllFrames()
+        } else {
+            barcodeDetectionManager.resumeScanning()
+        }
+        print("[ScannerViewImpl] Scanning \(value ? "paused" : "resumed")")
     }
     
     /// Set scan strategy
     /// - Parameter strategy: Strategy name as string
     @objc func setBarcodeScanStrategy(_ strategy: String) {
-        // Implementation: Set scan strategy
+        if let scanStrat = BarcodeScanStrategy(rawValue: strategy) {
+            scanStrategy = scanStrat
+            barcodeDetectionManager.setScanStrategy(scanStrat)
+            print("[ScannerViewImpl] Scan strategy set to: \(strategy)")
+        }
     }
     
     /// Set keep screen on
     /// - Parameter keepOn: Whether to keep screen on
-    @objc func setKeepScreenOn(_ keepOn: Bool) {
-        // Implementation: Control idle timer
+    @objc func setKeepScreenOn(_ keepOn: NSNumber) {
+        let value = keepOn.boolValue
+        keepScreenOn = value
+        UIApplication.shared.isIdleTimerDisabled = value
+        print("[ScannerViewImpl] Keep screen on: \(value)")
     }
     
     // MARK: - Lifecycle Methods
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Implementation: Update layout of subviews and preview layer
+        
+        print("[ScannerViewImpl] 📐 layoutSubviews called with bounds: \(bounds)")
+        
+        // Add preview layer if we have a valid frame and haven't added it yet
+        if !isPreviewLayerAdded && bounds.width > 0 && bounds.height > 0 {
+            if let preview = cameraManager.getPreviewLayer() {
+                self.previewLayer = preview
+                preview.frame = bounds
+                layer.insertSublayer(preview, at: 0)
+                isPreviewLayerAdded = true
+                print("[ScannerViewImpl] ✅ Preview layer added in layoutSubviews with frame: \(bounds)")
+            } else {
+                print("[ScannerViewImpl] ⚠️ Preview layer not ready yet in layoutSubviews")
+            }
+        }
+        
+        // Update preview layer frame if already added
+        if isPreviewLayerAdded {
+            previewLayer?.frame = bounds
+        }
+        
+        // Update overlay frames
+        focusAreaOverlay.frame = bounds
+        barcodeFrameOverlay.frame = bounds
     }
     
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        // Implementation: Handle view lifecycle
+
+        let nowVisible = (self.window != nil) && !self.isHidden && self.alpha > 0.01
+        updateVisibility(nowVisible)
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        let nowVisible = (self.window != nil) && !self.isHidden && self.alpha > 0.01
+        updateVisibility(nowVisible)
+    }
+
+    override var isHidden: Bool {
+        didSet {
+            let nowVisible = (self.window != nil) && !self.isHidden && self.alpha > 0.01
+            updateVisibility(nowVisible)
+        }
+    }
+
+    override var alpha: CGFloat {
+        didSet {
+            let nowVisible = (self.window != nil) && !self.isHidden && self.alpha > 0.01
+            updateVisibility(nowVisible)
+        }
+    }
+
+    private func updateVisibility(_ visible: Bool) {
+        guard visible != isViewVisible else { return }
+        isViewVisible = visible
+
+        if visible {
+            print("[ScannerViewImpl] 👁️ View became visible -> starting camera")
+            if keepScreenOn {
+                UIApplication.shared.isIdleTimerDisabled = true
+            }
+            cameraManager.startCamera()
+        } else {
+            print("[ScannerViewImpl] 🙈 View not visible -> stopping camera")
+            cameraManager.stopCamera()
+            // release keep-screen-on when off-screen
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
     }
     
     deinit {
-        // Implementation: Cleanup resources
+        cameraManager.stopCamera()
+        frameManager.shutdown()
+        UIApplication.shared.isIdleTimerDisabled = false
+        print("[ScannerViewImpl] Deinitialized")
     }
     
     // MARK: - Private Helper Methods
@@ -161,49 +289,157 @@ import Vision
     /// - Parameter observations: Raw barcode observations from Vision
     /// - Returns: Filtered and processed barcode results
     private func processBarcodeObservations(_ observations: [VNBarcodeObservation]) -> [BarcodeDetectionResult] {
-        // Implementation: Filter by focus area, apply strategy, transform coordinates
-        return []
+        guard !observations.isEmpty else { return [] }
+        
+        // Step 1: Filter by focus area if enabled
+        let filteredObservations = filterByFocusArea(observations)
+        guard !filteredObservations.isEmpty else { return [] }
+        
+        // Step 2: Apply scan strategy
+        let strategyObservations = applyScanStrategy(filteredObservations)
+        guard !strategyObservations.isEmpty else { return [] }
+        
+        // Step 3: Transform coordinates and create results
+        var results: [BarcodeDetectionResult] = []
+        for observation in strategyObservations {
+            // Transform bounding box from Vision to View coordinates
+            let viewRect = CoordinateTransformer.transformVisionRectToViewRect(
+                observation.boundingBox,
+                viewSize: bounds.size,
+                previewLayer: previewLayer
+            )
+            
+            // Get the barcode format string
+            let formatString = observation.symbology.rawValue
+            
+            // Create result
+            if let result = BarcodeDetectionResult.from(
+                observation: observation,
+                boundingBox: viewRect,
+                format: formatString
+            ) {
+                results.append(result)
+            }
+        }
+        
+        return results
     }
     
     /// Filter barcodes by focus area if enabled
     /// - Parameter observations: Barcode observations to filter
     /// - Returns: Filtered observations
     private func filterByFocusArea(_ observations: [VNBarcodeObservation]) -> [VNBarcodeObservation] {
-        // Implementation: Check if barcodes are within focus area
-        return []
+        guard focusAreaConfig.enabled, let _ = focusAreaOverlay.getFocusAreaFrame() else {
+            return observations
+        }
+        
+        return observations.filter { observation in
+            // Transform barcode rect to view coordinates
+            let viewRect = CoordinateTransformer.transformVisionRectToViewRect(
+                observation.boundingBox,
+                viewSize: bounds.size,
+                previewLayer: previewLayer
+            )
+            
+            // Check if barcode is within focus area
+            return focusAreaOverlay.isRectInFocusArea(viewRect)
+        }
     }
     
     /// Apply scan strategy to barcode observations
     /// - Parameter observations: Barcode observations
     /// - Returns: Processed observations according to strategy
     private func applyScanStrategy(_ observations: [VNBarcodeObservation]) -> [VNBarcodeObservation] {
-        // Implementation: Apply ONE, ALL, BIGGEST, or SORT_BY_BIGGEST
-        return []
+        guard !observations.isEmpty else { return [] }
+        
+        switch scanStrategy {
+        case .one:
+            // Return only the first barcode
+            return [observations[0]]
+            
+        case .all:
+            // Return all barcodes
+            return observations
+            
+        case .biggest:
+            // Return only the largest barcode by area
+            let observationsWithArea = observations.compactMap { observation -> (VNBarcodeObservation, CGFloat)? in
+                let rect = observation.boundingBox
+                let area = rect.width * rect.height
+                return (observation, area)
+            }
+            
+            if let biggest = observationsWithArea.max(by: { $0.1 < $1.1 }) {
+                return [biggest.0]
+            }
+            return []
+            
+        case .sortByBiggest:
+            // Sort all barcodes by area (largest first)
+            let observationsWithArea = observations.compactMap { observation -> (VNBarcodeObservation, CGFloat)? in
+                let rect = observation.boundingBox
+                let area = rect.width * rect.height
+                return (observation, area)
+            }
+            
+            return observationsWithArea
+                .sorted { $0.1 > $1.1 }
+                .map { $0.0 }
+        }
     }
     
     /// Update barcode frame display
     /// - Parameter observations: Barcode observations to display
     private func updateBarcodeFrameDisplay(_ observations: [VNBarcodeObservation]) {
-        // Implementation: Transform coordinates and update frame manager
+        guard barcodeFramesConfig.enabled else {
+            frameManager.clearAllFrames()
+            return
+        }
+        
+        var frameDict: [String: CGRect] = [:]
+        
+        for observation in observations {
+            guard let barcodeValue = observation.payloadStringValue else { continue }
+            
+            // Transform to view coordinates
+            let viewRect = CoordinateTransformer.transformVisionRectToViewRect(
+                observation.boundingBox,
+                viewSize: bounds.size,
+                previewLayer: previewLayer
+            )
+            
+            // Filter by focus area if onlyInFocusArea is enabled
+            if barcodeFramesConfig.onlyInFocusArea && focusAreaConfig.showOverlay {
+                if focusAreaOverlay.isRectInFocusArea(viewRect) {
+                    frameDict[barcodeValue] = viewRect
+                }
+            } else {
+                frameDict[barcodeValue] = viewRect
+            }
+        }
+        
+        frameManager.updateBarcodeFrames(frameDict)
     }
     
     /// Emit barcodes detected event to React Native
     /// - Parameter results: Detected barcode results
     private func emitBarcodesDetected(_ results: [BarcodeDetectionResult]) {
-        // Implementation: Convert to dictionaries and call delegate
+        let barcodesArray = results.map { $0.toDictionary() }
+        delegate?.scannerDidDetectBarcodes(barcodesArray)
     }
     
     /// Emit error event to React Native
     /// - Parameter error: The error that occurred
     private func emitError(_ error: ScannerError) {
-        // Implementation: Call delegate with error dictionary
+        delegate?.scannerDidEncounterError(error.toDictionary())
     }
     
     /// Emit load event to React Native
     /// - Parameter success: Whether loading was successful
     /// - Parameter error: Optional error message
     private func emitLoadEvent(success: Bool, error: String? = nil) {
-        // Implementation: Call delegate with load event dictionary
+        let payload = LoadEventPayload(success: success, error: error)
+        delegate?.scannerDidLoad(payload.toDictionary())
     }
 }
 
@@ -211,38 +447,103 @@ import Vision
 
 extension ScannerViewImpl: CameraManagerDelegate {
     func cameraManager(_ manager: CameraManager, didOutput sampleBuffer: CMSampleBuffer) {
-        // Implementation: Pass to barcode detection if not paused
+        // Don't process if scanning is paused
+        guard !isPaused else { return }
+        
+        // Pass sample buffer to barcode detection
+        barcodeDetectionManager.detectBarcodes(in: sampleBuffer) { [weak self] observations in
+            guard let self = self, !self.isPaused else { return }
+            
+            // Process observations
+            let results = self.processBarcodeObservations(observations)
+            
+            // Update barcode frames display
+            self.updateBarcodeFrameDisplay(observations)
+            
+            // Emit results if any
+            if !results.isEmpty {
+                self.emitBarcodesDetected(results)
+            }
+        }
     }
     
     func cameraManagerDidFail(_ manager: CameraManager, error: Error) {
-        // Implementation: Handle camera failure
+        print("[ScannerViewImpl] Camera failed: \(error.localizedDescription)")
+        let scannerError = ScannerError.from(
+            code: .cameraInitializationFailed,
+            message: error.localizedDescription
+        )
+        emitError(scannerError)
     }
     
     func cameraManagerDidStart(_ manager: CameraManager) {
-        // Implementation: Emit load event
+        print("[ScannerViewImpl] ✅ Camera started successfully")
+
+        // Re-apply torch after the session is fully running (fixes "torch set too early" cases)
+        manager.setTorch(enabled: requestedTorchEnabled)
+        
+        // Try to add preview layer on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Check bounds multiple times with delay to catch layout
+            self.attemptToAddPreviewLayer(attempt: 0)
+            
+            self.emitLoadEvent(success: true)
+        }
+    }
+    
+    private func attemptToAddPreviewLayer(attempt: Int) {
+        guard !isPreviewLayerAdded else { return }
+        
+        if self.bounds.width > 0 && self.bounds.height > 0 {
+            if let preview = self.cameraManager.getPreviewLayer() {
+                self.previewLayer = preview
+                preview.frame = self.bounds
+                self.layer.insertSublayer(preview, at: 0)
+                self.isPreviewLayerAdded = true
+                print("[ScannerViewImpl] ✅ Preview layer added with frame: \(self.bounds)")
+            }
+        } else if attempt < 10 {
+            // Try again after a short delay (max 10 attempts = ~2 seconds)
+            print("[ScannerViewImpl] ⏳ Attempt \(attempt + 1): Waiting for valid bounds (current: \(self.bounds))")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.attemptToAddPreviewLayer(attempt: attempt + 1)
+            }
+        } else {
+            print("[ScannerViewImpl] ❌ Failed to add preview layer after 10 attempts - bounds never became valid")
+        }
     }
 }
 
 // MARK: - BarcodeDetectionDelegate
 
 extension ScannerViewImpl: BarcodeDetectionDelegate {
-    func barcodeDetectionManager(_ manager: BarcodeDetectionManager, 
+    func barcodeDetectionManager(_ manager: BarcodeDetectionManager,
                                  didDetect observations: [VNBarcodeObservation]) {
-        // Implementation: Process and emit detected barcodes
+        // This is only called when using the delegate-based detection
+        // We're using the completion-based approach in cameraManager:didOutput:
+        // But we can handle it here as well if needed
     }
     
-    func barcodeDetectionManager(_ manager: BarcodeDetectionManager, 
+    func barcodeDetectionManager(_ manager: BarcodeDetectionManager,
                                  didFailWith error: Error) {
-        // Implementation: Handle detection failure
+        print("[ScannerViewImpl] Barcode detection failed: \(error.localizedDescription)")
+        let scannerError = ScannerError.from(
+            code: .barcodeDetectionFailed,
+            message: error.localizedDescription
+        )
+        emitError(scannerError)
     }
 }
 
 // MARK: - BarcodeFrameManagerDelegate
 
 extension ScannerViewImpl: BarcodeFrameManagerDelegate {
-    func barcodeFrameManager(_ manager: BarcodeFrameManager, 
+    func barcodeFrameManager(_ manager: BarcodeFrameManager,
                             didUpdateFrames frames: [CGRect]) {
-        // Implementation: Update overlay view
+        // Frames are automatically updated via the closure callback
+        // This delegate method is here for additional functionality if needed
     }
 }
 

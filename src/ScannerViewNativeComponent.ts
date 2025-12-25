@@ -5,17 +5,47 @@ import type {
   BubblingEventHandler,
   Double,
 } from 'react-native/Libraries/Types/CodegenTypes';
-// import type { FrameSize } from './types';
 
 export interface NativeProps extends ViewProps {
   barcodeTypes?: string[];
-  enableFrame?: boolean;
-  frameColor?: string;
-  // frameSize?: FrameSize; // Will be handled as ReadableMap in native code
-  showBarcodeFramesOnlyInFrame?: boolean;
+
+  /**
+   * Focus area configuration (Android: drives overlay + optional filtering).
+   * - `showOverlay` controls whether the scanning region is drawn.
+   * - `enabled` controls whether scanning is restricted to that region.
+   */
+  focusArea?: {
+    enabled?: boolean;
+    showOverlay?: boolean;
+    borderColor?: string;
+    tintColor?: string;
+    // NOTE: Codegen does not support mixed types (number OR object), so we always pass {width,height}.
+    size?: {
+      width: Double;
+      height: Double;
+    };
+    position?: {
+      x: Double; // 0-100
+      y: Double; // 0-100
+    };
+  };
+
+  /**
+   * Barcode frames configuration (draw rectangles around detected barcodes).
+   */
+  barcodeFrames?: {
+    enabled?: boolean;
+    color?: string;
+    onlyInFocusArea?: boolean;
+  };
+
   torch?: boolean;
   zoom?: Double;
   pauseScanning?: boolean;
+
+  barcodeScanStrategy?: string;
+  keepScreenOn?: boolean;
+
   onBarcodeScanned?: BubblingEventHandler<{
     barcodes: {
       data: string;

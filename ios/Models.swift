@@ -134,7 +134,17 @@ struct FocusAreaConfig {
         }
         
         if let tintColorStr = dict["tintColor"] as? String {
-            config.tintColor = UIColor(hexString: tintColorStr)
+            // Match Android behavior: tintColor is treated as a base color with 50% opacity
+            // unless the user explicitly supplies an 8-digit ARGB value.
+            let trimmed = tintColorStr.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+            let parsed = UIColor(hexString: tintColorStr)
+            if trimmed.count == 8 {
+                // ARGB includes alpha; respect it.
+                config.tintColor = parsed
+            } else {
+                // Force semi-transparent overlay like Android (alpha ~ 0.5)
+                config.tintColor = parsed.withAlphaComponent(0.5)
+            }
         }
         
         if let positionDict = dict["position"] as? [String: Any],

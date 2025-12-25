@@ -61,10 +61,18 @@ class BarcodeFrameOverlayView: UIView, BarcodeFrameDisplayProtocol {
     /// Draw barcode frame rectangles
     /// - Parameter context: Graphics context
     private func drawBarcodeFrames(in context: CGContext) {
-        // Implementation:
-        // 1. Set stroke color and width
-        // 2. Iterate through barcodeBoxes
-        // 3. Draw rectangle for each box
+        guard !barcodeBoxes.isEmpty else { return }
+        
+        // Set stroke color and width
+        context.setStrokeColor(frameColor.cgColor)
+        context.setLineWidth(frameStrokeWidth)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        
+        // Draw rectangle for each barcode box
+        for box in barcodeBoxes {
+            context.stroke(box)
+        }
     }
     
     // MARK: - BarcodeFrameDisplayProtocol Methods
@@ -72,7 +80,8 @@ class BarcodeFrameOverlayView: UIView, BarcodeFrameDisplayProtocol {
     /// Update the barcode frames configuration
     /// - Parameter config: The new configuration
     func updateBarcodeFrames(config: BarcodeFramesConfig) {
-        // Implementation: Update frame color and other settings
+        frameColor = config.color
+        setNeedsDisplay()
     }
     
     /// Set the barcode boxes to display
