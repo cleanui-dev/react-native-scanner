@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,8 +8,10 @@ import {
   Platform,
   Button,
   StatusBar,
+  type NativeSyntheticEvent,
 } from 'react-native';
-import ScannerView, {
+import {
+  ScannerView,
   BarcodeFormat,
   BarcodeScanStrategy,
   type BarcodeScannedEventPayload,
@@ -93,11 +95,41 @@ function FullScreenExample() {
     setPermission(result);
   };
 
-  const handleBarcodeScanned = (event: {
-    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
-  }) => {
+  const handleBarcodeScanned = (
+    event: NativeSyntheticEvent<{
+      barcodes: {
+        data: string;
+        format: string;
+        timestamp: number;
+        boundingBox?: {
+          left: number;
+          top: number;
+          right: number;
+          bottom: number;
+        };
+        area?: number;
+      }[];
+    }>
+  ) => {
     console.log('handleBarcodeScanned', event.nativeEvent.barcodes);
-    const barcodes = event.nativeEvent.barcodes;
+    const barcodes: BarcodeScannedEventPayload[] =
+      event.nativeEvent.barcodes.map(
+        (barcode: {
+          data: string;
+          format: string;
+          timestamp: number;
+          boundingBox?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+          };
+          area?: number;
+        }) => ({
+          ...barcode,
+          format: barcode.format as BarcodeFormat,
+        })
+      );
     if (barcodes.length === 0) {
       return;
     }
@@ -274,7 +306,13 @@ function FullScreenExample() {
             BarcodeFormat.AZTEC,
             BarcodeFormat.ITF,
           ]}
-          focusArea={focusAreaConfig}
+          focusArea={{
+            ...focusAreaConfig,
+            size:
+              typeof focusAreaConfig.size === 'number'
+                ? { width: focusAreaConfig.size, height: focusAreaConfig.size }
+                : focusAreaConfig.size,
+          }}
           torch={torchEnabled}
           zoom={zoom}
           onBarcodeScanned={handleBarcodeScanned}

@@ -6,6 +6,48 @@ import type {
   Double,
 } from 'react-native/Libraries/Types/CodegenTypes';
 
+// Nested object types for better codegen compatibility
+export interface FocusAreaSize {
+  width: Double;
+  height: Double;
+}
+
+export interface FocusAreaPosition {
+  x: Double; // 0-100
+  y: Double; // 0-100
+}
+
+export interface FocusAreaConfig {
+  enabled?: boolean;
+  showOverlay?: boolean;
+  borderColor?: string;
+  tintColor?: string;
+  // NOTE: Codegen does not support mixed types (number OR object), so we always pass {width,height}.
+  size?: FocusAreaSize;
+  position?: FocusAreaPosition;
+}
+
+export interface BarcodeFramesConfig {
+  enabled?: boolean;
+  color?: string;
+  onlyInFocusArea?: boolean;
+}
+
+export interface BoundingBox {
+  left: Double;
+  top: Double;
+  right: Double;
+  bottom: Double;
+}
+
+export interface BarcodeData {
+  data: string;
+  format: string;
+  timestamp: Double;
+  boundingBox?: BoundingBox;
+  area?: Double;
+}
+
 export interface NativeProps extends ViewProps {
   barcodeTypes?: string[];
 
@@ -14,30 +56,12 @@ export interface NativeProps extends ViewProps {
    * - `showOverlay` controls whether the scanning region is drawn.
    * - `enabled` controls whether scanning is restricted to that region.
    */
-  focusArea?: {
-    enabled?: boolean;
-    showOverlay?: boolean;
-    borderColor?: string;
-    tintColor?: string;
-    // NOTE: Codegen does not support mixed types (number OR object), so we always pass {width,height}.
-    size?: {
-      width: Double;
-      height: Double;
-    };
-    position?: {
-      x: Double; // 0-100
-      y: Double; // 0-100
-    };
-  };
+  focusArea?: FocusAreaConfig;
 
   /**
    * Barcode frames configuration (draw rectangles around detected barcodes).
    */
-  barcodeFrames?: {
-    enabled?: boolean;
-    color?: string;
-    onlyInFocusArea?: boolean;
-  };
+  barcodeFrames?: BarcodeFramesConfig;
 
   torch?: boolean;
   zoom?: Double;
