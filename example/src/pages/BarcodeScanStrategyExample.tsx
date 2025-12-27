@@ -7,8 +7,13 @@ import {
   TouchableOpacity,
   Alert,
   SafeAreaView,
+  type NativeSyntheticEvent,
 } from 'react-native';
-import ScannerView, { BarcodeScanStrategy } from 'react-native-scanner';
+import {
+  ScannerView,
+  BarcodeScanStrategy,
+  BarcodeFormat,
+} from 'react-native-scanner';
 import type { BarcodeScannedEventPayload } from 'react-native-scanner';
 
 const BarcodeScanStrategyExample: React.FC = () => {
@@ -33,17 +38,47 @@ const BarcodeScanStrategyExample: React.FC = () => {
     },
   ];
 
-  const handleBarcodeScanned = (event: {
-    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
-  }) => {
-    const barcodes = event.nativeEvent.barcodes;
-    setScannedBarcodes(barcodes);
+  const handleBarcodeScanned = (
+    event: NativeSyntheticEvent<{
+      barcodes: {
+        data: string;
+        format: string;
+        timestamp: number;
+        boundingBox?: {
+          left: number;
+          top: number;
+          right: number;
+          bottom: number;
+        };
+        area?: number;
+      }[];
+    }>
+  ) => {
+    const typedBarcodes: BarcodeScannedEventPayload[] =
+      event.nativeEvent.barcodes.map(
+        (barcode: {
+          data: string;
+          format: string;
+          timestamp: number;
+          boundingBox?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+          };
+          area?: number;
+        }) => ({
+          ...barcode,
+          format: barcode.format as BarcodeFormat,
+        })
+      );
+    setScannedBarcodes(typedBarcodes);
 
     console.log(
-      `Scanned ${barcodes.length} barcode(s) with strategy: ${selectedStrategy}`
+      `Scanned ${typedBarcodes.length} barcode(s) with strategy: ${selectedStrategy}`
     );
-    if (Array.isArray(barcodes)) {
-      barcodes.forEach((barcode, index) => {
+    if (Array.isArray(typedBarcodes)) {
+      typedBarcodes.forEach((barcode, index) => {
         console.log(`Barcode ${index + 1}:`, {
           data: barcode.data,
           format: barcode.format,
@@ -54,7 +89,7 @@ const BarcodeScanStrategyExample: React.FC = () => {
 
       Alert.alert(
         'Barcodes Scanned!',
-        `Found ${barcodes.length} barcode(s) using strategy: ${selectedStrategy}\n\n${barcodes
+        `Found ${typedBarcodes.length} barcode(s) using strategy: ${selectedStrategy}\n\n${typedBarcodes
           .map(
             (barcode, index) =>
               `${index + 1}. ${barcode.data} (${barcode.format})${
@@ -109,7 +144,7 @@ const BarcodeScanStrategyExample: React.FC = () => {
               focusArea={{
                 enabled: true,
                 showOverlay: true,
-                size: 300,
+                size: { width: 300, height: 300 },
                 borderColor: '#00FF00',
               }}
               barcodeFrames={{

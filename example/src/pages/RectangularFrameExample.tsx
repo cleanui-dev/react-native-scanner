@@ -7,9 +7,11 @@ import {
   Alert,
   Platform,
   ScrollView,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import ScannerView, {
+import {
+  ScannerView,
   BarcodeFormat,
   BarcodeScanStrategy,
   type BarcodeScannedEventPayload,
@@ -55,10 +57,40 @@ export default function RectangularFrameExample() {
     setPermission(result);
   };
 
-  const handleBarcodeScanned = (event: {
-    nativeEvent: { barcodes: BarcodeScannedEventPayload[] };
-  }) => {
-    const barcodes = event.nativeEvent.barcodes;
+  const handleBarcodeScanned = (
+    event: NativeSyntheticEvent<{
+      barcodes: {
+        data: string;
+        format: string;
+        timestamp: number;
+        boundingBox?: {
+          left: number;
+          top: number;
+          right: number;
+          bottom: number;
+        };
+        area?: number;
+      }[];
+    }>
+  ) => {
+    const barcodes: BarcodeScannedEventPayload[] =
+      event.nativeEvent.barcodes.map(
+        (barcode: {
+          data: string;
+          format: string;
+          timestamp: number;
+          boundingBox?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+          };
+          area?: number;
+        }) => ({
+          ...barcode,
+          format: barcode.format as BarcodeFormat,
+        })
+      );
     if (barcodes.length === 0) {
       return;
     }
