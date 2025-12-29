@@ -1,26 +1,49 @@
-# React Native Scanner
+<div align="center">
 
-A native barcode and QR code scanner for React Native with support for focus area overlay, torch control, and multiple barcode formats.
+# 📱 React Native Scanner
 
-## Features
+**A powerful, native barcode and QR code scanner for React Native**
 
-- 📱 **Native Performance**: Built with CameraX and ML Kit for optimal performance
-- 🎯 **Focus Area**: Configurable focus area with optional overlay for precise scanning
-- 🔦 **Torch Control**: Built-in flashlight/torch control
-- 📊 **Multiple Formats**: Support for QR codes, Code128, Code39, EAN, UPC, and more
-- 🎨 **Customizable**: Configurable focus area colors, barcode frame visualization, and scanning behavior
-- 📱 **Cross Platform**: Android support (iOS coming soon)
+[![npm version](https://img.shields.io/npm/v/@cleanuidev/react-native-scanner?label=beta&color=blue)](https://www.npmjs.com/package/@cleanuidev/react-native-scanner)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/Platform-Android-blue.svg)](https://www.android.com/)
+[![React Native](https://img.shields.io/badge/React%20Native-0.83+-61DAFB?logo=react)](https://reactnative.dev/)
 
-## Installation
+**Built with ❤️ by [CleanUI.dev](https://cleanui.dev)**
+
+[Features](#-features) • [Installation](#-installation) • [Documentation](#-documentation) • [Support](#-consulting--support)
+
+</div>
+
+---
+
+## ✨ Features
+
+<div align="center">
+
+| Feature | Description |
+|:------:|:-----------|
+| 🚀 **Native Performance** | Built with CameraX and ML Kit for optimal performance |
+| 🎯 **Focus Area** | Configurable focus area with optional overlay for precise scanning |
+| 🔦 **Torch Control** | Built-in flashlight/torch control |
+| 📊 **Multiple Formats** | Support for QR codes, Code128, Code39, EAN, UPC, and more |
+| 🎨 **Customizable** | Configurable focus area colors, barcode frame visualization, and scanning behavior |
+| 📱 **Cross Platform** | Android support (iOS coming soon) |
+
+</div>
+
+---
+
+## 📦 Installation
 
 ### Install Beta Version
 
 Currently, the library is in beta. Install the beta version using:
 
 ```bash
-npm install @cleanui/react-native-scanner@beta
+npm install @cleanuidev/react-native-scanner@beta
 # or
-yarn add @cleanui/react-native-scanner@beta
+yarn add @cleanuidev/react-native-scanner@beta
 ```
 
 ### Install Specific Version
@@ -28,16 +51,16 @@ yarn add @cleanui/react-native-scanner@beta
 To install a specific beta version:
 
 ```bash
-npm install @cleanui/react-native-scanner@1.0.0-beta.1
+npm install @cleanuidev/react-native-scanner@1.0.0-beta.1
 # or
-yarn add @cleanui/react-native-scanner@1.0.0-beta.1
+yarn add @cleanuidev/react-native-scanner@1.0.0-beta.1
 ```
 
-> **Note**: Once the library reaches stable release (1.0.0), you can install it without the `@beta` tag:
+> **💡 Note**: Once the library reaches stable release (1.0.0), you can install it without the `@beta` tag:
 > ```bash
-> npm install @cleanui/react-native-scanner
+> npm install @cleanuidev/react-native-scanner
 > # or
-> yarn add @cleanui/react-native-scanner
+> yarn add @cleanuidev/react-native-scanner
 > ```
 
 ### Android Setup
@@ -45,21 +68,23 @@ yarn add @cleanui/react-native-scanner@1.0.0-beta.1
 Add the following permissions to your `android/app/src/main/AndroidManifest.xml`:
 
 ```xml
-  <uses-permission android:name="android.permission.CAMERA" />
-  <uses-permission android:name="android.permission.WAKE_LOCK" />
-  <uses-feature android:name="android.hardware.camera" android:required="true" />
-  <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
-  <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-feature android:name="android.hardware.camera" android:required="true" />
+<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+<uses-feature android:name="android.hardware.camera.flash" android:required="false" />
 ```
 
-## Usage
+---
+
+## 🚀 Quick Start
 
 ### Basic Scanner
 
 ```tsx
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import ScannerView, { BarcodeFormat } from '@cleanui/react-native-scanner';
+import ScannerView, { BarcodeFormat } from '@cleanuidev/react-native-scanner';
 
 export default function App() {
   const handleBarcodeScanned = (event) => {
@@ -92,7 +117,7 @@ const styles = StyleSheet.create({
 ```tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
-import ScannerView, { BarcodeFormat } from '@cleanui/react-native-scanner';
+import ScannerView, { BarcodeFormat } from '@cleanuidev/react-native-scanner';
 
 export default function FocusAreaScanner() {
   const [torchEnabled, setTorchEnabled] = useState(false);
@@ -149,12 +174,34 @@ export default function FocusAreaScanner() {
 }
 ```
 
-## API Reference
+---
 
-### Props
+## 🎨 UI Design Note
+
+> **💡 Note**: The native overlays and frames are provided to fulfill minimum design requirements and for debugging during development. We **recommend implementing custom React Native UI** for enhanced user experiences.
+
+To use custom UI, simply disable the native visual overlays and build your own:
+
+```tsx
+<ScannerView
+  focusArea={{ enabled: true, showOverlay: false }} // Disable native overlay
+  barcodeFrames={{ enabled: false }} // Disable native frames
+  onBarcodeScanned={handleBarcodeScanned}
+/>
+```
+
+Then layer your custom React Native components on top for a fully branded experience.
+
+---
+
+## 📚 Documentation
+
+### API Reference
+
+#### Props
 
 | Prop | Type | Default | Description |
-|------|------|---------|-------------|
+|:----:|:----:|:-------:|:-----------|
 | `barcodeTypes` | `BarcodeFormat[]` | `[BarcodeFormat.QR_CODE]` | Array of barcode formats to scan |
 | `focusArea` | `FocusAreaConfig` | - | Focus area configuration |
 | `barcodeFrames` | `BarcodeFramesConfig` | - | Barcode frame visualization configuration |
@@ -167,7 +214,9 @@ export default function FocusAreaScanner() {
 | `onScannerError` | `function` | - | Callback when scanner encounters an error |
 | `onLoad` | `function` | - | Callback when scanner is loaded |
 
-#### FocusAreaConfig
+#### Configuration Types
+
+##### FocusAreaConfig
 
 ```tsx
 type FocusAreaConfig = {
@@ -178,7 +227,7 @@ type FocusAreaConfig = {
 };
 ```
 
-#### BarcodeFramesConfig
+##### BarcodeFramesConfig
 
 ```tsx
 type BarcodeFramesConfig = {
@@ -188,7 +237,7 @@ type BarcodeFramesConfig = {
 };
 ```
 
-#### FrameSize
+##### FrameSize
 
 ```tsx
 type FrameSize = number | { width: number; height: number };
@@ -199,7 +248,7 @@ type FrameSize = number | { width: number; height: number };
 #### BarcodeScanStrategy
 
 ```tsx
-import { BarcodeScanStrategy } from '@cleanui/react-native-scanner';
+import { BarcodeScanStrategy } from '@cleanuidev/react-native-scanner';
 
 // Available strategies:
 BarcodeScanStrategy.ONE              // Process only the first barcode detected
@@ -208,10 +257,10 @@ BarcodeScanStrategy.BIGGEST          // Process only the largest barcode by area
 BarcodeScanStrategy.SORT_BY_BIGGEST  // Process all barcodes sorted by size (largest first)
 ```
 
-### Barcode Formats
+#### Barcode Formats
 
 ```tsx
-import { BarcodeFormat } from '@cleanui/react-native-scanner';
+import { BarcodeFormat } from '@cleanuidev/react-native-scanner';
 
 // Available formats:
 BarcodeFormat.QR_CODE        // QR Code
@@ -227,9 +276,10 @@ BarcodeFormat.AZTEC          // Aztec
 BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 ```
 
-### Event Payloads
+#### Event Payloads
 
-#### onBarcodeScanned
+##### onBarcodeScanned
+
 ```tsx
 {
   nativeEvent: [
@@ -249,7 +299,8 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 }
 ```
 
-#### onScannerError
+##### onScannerError
+
 ```tsx
 {
   nativeEvent: {
@@ -259,7 +310,8 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 }
 ```
 
-#### onLoad
+##### onLoad
+
 ```tsx
 {
   nativeEvent: {
@@ -269,11 +321,15 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 }
 ```
 
-## Focus Area Configuration
+---
+
+## 🎯 Advanced Usage
+
+### Focus Area Configuration
 
 The focus area feature provides precise control over where barcodes are scanned:
 
-### Basic Focus Area
+#### Basic Focus Area
 
 ```tsx
 <ScannerView
@@ -286,7 +342,7 @@ The focus area feature provides precise control over where barcodes are scanned:
 />
 ```
 
-### Focus Area with Restricted Scanning
+#### Focus Area with Restricted Scanning
 
 ```tsx
 <ScannerView
@@ -300,7 +356,7 @@ The focus area feature provides precise control over where barcodes are scanned:
 />
 ```
 
-### Rectangular Focus Area
+#### Rectangular Focus Area
 
 ```tsx
 <ScannerView
@@ -313,11 +369,11 @@ The focus area feature provides precise control over where barcodes are scanned:
 />
 ```
 
-## Barcode Frame Visualization
+### Barcode Frame Visualization
 
 The scanner can display visual frames around detected barcodes to help users see what's being scanned:
 
-### Show All Barcode Frames
+#### Show All Barcode Frames
 
 ```tsx
 <ScannerView
@@ -329,7 +385,7 @@ The scanner can display visual frames around detected barcodes to help users see
 />
 ```
 
-### Show Frames Only in Focus Area
+#### Show Frames Only in Focus Area
 
 ```tsx
 <ScannerView
@@ -346,11 +402,11 @@ The scanner can display visual frames around detected barcodes to help users see
 />
 ```
 
-## Barcode Scan Strategy
+### Barcode Scan Strategy
 
-The scanner now supports different strategies for processing multiple detected barcodes. The `onBarcodeScanned` event always returns an array of barcodes, even when only one barcode is processed.
+The scanner supports different strategies for processing multiple detected barcodes. The `onBarcodeScanned` event always returns an array of barcodes, even when only one barcode is processed.
 
-### Process All Barcodes (Default)
+#### Process All Barcodes (Default)
 
 ```tsx
 <ScannerView
@@ -362,7 +418,7 @@ The scanner now supports different strategies for processing multiple detected b
 />
 ```
 
-### Process Only the First Barcode
+#### Process Only the First Barcode
 
 ```tsx
 <ScannerView
@@ -377,7 +433,7 @@ The scanner now supports different strategies for processing multiple detected b
 />
 ```
 
-### Process Only the Largest Barcode
+#### Process Only the Largest Barcode
 
 ```tsx
 <ScannerView
@@ -393,7 +449,7 @@ The scanner now supports different strategies for processing multiple detected b
 />
 ```
 
-### Process All Barcodes Sorted by Size
+#### Process All Barcodes Sorted by Size
 
 ```tsx
 <ScannerView
@@ -408,7 +464,7 @@ The scanner now supports different strategies for processing multiple detected b
 />
 ```
 
-## Torch Control
+### Torch Control
 
 The torch/flashlight can be controlled via the `torch` prop:
 
@@ -421,11 +477,11 @@ const [torchEnabled, setTorchEnabled] = useState(false);
 />
 ```
 
-## Keep Screen On
+### Keep Screen On
 
 The scanner automatically keeps the screen on while the camera is active to prevent auto-lock during scanning sessions. This behavior can be controlled via the `keepScreenOn` prop:
 
-### Default Behavior (Screen Stays On)
+#### Default Behavior (Screen Stays On)
 
 ```tsx
 <ScannerView
@@ -434,7 +490,7 @@ The scanner automatically keeps the screen on while the camera is active to prev
 />
 ```
 
-### Allow Screen Auto-Lock
+#### Allow Screen Auto-Lock
 
 ```tsx
 <ScannerView
@@ -443,7 +499,7 @@ The scanner automatically keeps the screen on while the camera is active to prev
 />
 ```
 
-### Dynamic Control
+#### Dynamic Control
 
 ```tsx
 const [keepScreenOn, setKeepScreenOn] = useState(true);
@@ -459,9 +515,11 @@ const [keepScreenOn, setKeepScreenOn] = useState(true);
 </TouchableOpacity>
 ```
 
-**Note**: The screen is kept on by default (`keepScreenOn={true}`) as this is typically desired for scanning applications. When disabled, the screen may auto-lock, which could interrupt scanning sessions.
+> **💡 Note**: The screen is kept on by default (`keepScreenOn={true}`) as this is typically desired for scanning applications. When disabled, the screen may auto-lock, which could interrupt scanning sessions.
 
-## Permissions
+---
+
+## 🔐 Permissions
 
 The scanner requires camera permissions. Make sure to request camera permissions in your app before using the scanner:
 
@@ -491,11 +549,17 @@ const requestCameraPermission = async () => {
 };
 ```
 
-## Example
+---
+
+## 📖 Examples
 
 See the `example/` directory for complete working examples, including the "New Props Example" that demonstrates the updated prop structure.
 
-## Contributing
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please follow these steps:
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -503,10 +567,43 @@ See the `example/` directory for complete working examples, including the "New P
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## License
+For more details, see our [Contributing Guide](CONTRIBUTING.md).
+
+---
+
+## 💼 Consulting & Support
+
+### Community Support (Free)
+
+For bug reports, feature requests, and general questions:
+- 📝 [Open an issue](https://github.com/cleanui-dev/react-native-scanner/issues) on GitHub
+- 💬 Use GitHub Discussions for questions and community help
+
+### Commercial Support & Consulting
+
+Need professional help with implementation, custom development, or enterprise support?
+
+- 📧 **Email**: [contact@cleanuitechnologies.com](mailto:contact@cleanuitechnologies.com)
+- 🌐 **Company**: [cleanui.dev](https://cleanui.dev)
+
+**We offer:**
+- ✅ Custom implementation assistance
+- ✅ Enterprise support and SLA
+- ✅ Feature development and customization
+- ✅ Code reviews and architecture consulting
+
+---
+
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-Made with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)
+<div align="center">
+
+**Made with ❤️ by [CleanUI.dev](https://cleanui.dev)**
+
+[Website](https://cleanui.dev) • [GitHub](https://github.com/cleanui-dev) • [Support](mailto:hi@cleanuitechnologies.com)
+
+</div>

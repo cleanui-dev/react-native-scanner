@@ -8,11 +8,11 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { ScannerView, BarcodeFormat } from '@cleanui/react-native-scanner';
+import { ScannerView, BarcodeFormat } from '@cleanuidev/react-native-scanner';
 import type {
   BarcodeScannedEvent,
   BarcodeScannedEventPayload,
-} from '@cleanui/react-native-scanner';
+} from '@cleanuidev/react-native-scanner';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import {
   SafeAreaProvider,

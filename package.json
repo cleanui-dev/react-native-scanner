@@ -1,5 +1,5 @@
 {
-  "name": "@cleanui/react-native-scanner",
+  "name": "@cleanuidev/react-native-scanner",
   "version": "1.0.0-beta.1",
   "description": "scanner",
   "main": "./lib/module/index.js",
@@ -49,14 +49,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rahulgwebdev/react-native-scanner.git"
+    "url": "git+https://github.com/cleanui-dev/react-native-scanner.git"
   },
   "author": "Rahul Gupta <rahulgwebdev@gmail.com> (https://github.com/rahulgwebdev)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rahulgwebdev/react-native-scanner/issues"
+    "url": "https://github.com/cleanui-dev/react-native-scanner/issues"
   },
-  "homepage": "https://github.com/rahulgwebdev/react-native-scanner#readme",
+  "homepage": "https://github.com/cleanui-dev/react-native-scanner#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
