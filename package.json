@@ -1,7 +1,7 @@
 {
   "name": "@cleanuidev/react-native-scanner",
-  "version": "1.0.0-beta.2",
-  "description": "scanner",
+  "version": "1.0.0-beta.3",
+  "description": "High-performance native barcode and QR code scanner for React Native. Scan barcodes in configurable target areas for precise detection. Built with CameraX & ML Kit (Android) and AVFoundation & Vision (iOS).",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
@@ -45,7 +45,31 @@
   "keywords": [
     "react-native",
     "ios",
-    "android"
+    "android",
+    "barcode-scanner",
+    "qr-code-scanner",
+    "barcode",
+    "qr-code",
+    "qrcode",
+    "scanner",
+    "camera",
+    "camerax",
+    "ml-kit",
+    "avfoundation",
+    "vision",
+    "react-native-scanner",
+    "barcode-detection",
+    "qr-detection",
+    "mobile-scanner",
+    "native-scanner",
+    "fabric",
+    "new architecture",
+    "focus area",
+    "region scanning",
+    "frame scanning",
+    "area scanning",
+    "targeted-scanning",
+    "precise-scanning"
   ],
   "repository": {
     "type": "git",

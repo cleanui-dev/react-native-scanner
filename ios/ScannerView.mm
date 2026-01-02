@@ -263,7 +263,11 @@ using namespace facebook::react;
 
     // Barcode emission interval
     if (oldViewProps.barcodeEmissionInterval != newViewProps.barcodeEmissionInterval) {
-        NSNumber *intervalValue = @(newViewProps.barcodeEmissionInterval);
+        // Handle negative values (clamp to 0)
+        double interval = newViewProps.barcodeEmissionInterval;
+        double actualInterval = interval < 0 ? 0.0 : interval;
+        
+        NSNumber *intervalValue = @(actualInterval);
         if ([_scannerImpl respondsToSelector:@selector(setBarcodeEmissionInterval:)]) {
             [_scannerImpl performSelector:@selector(setBarcodeEmissionInterval:) withObject:intervalValue];
         }

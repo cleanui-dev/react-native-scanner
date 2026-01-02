@@ -2,9 +2,9 @@
 
 # 📱 React Native Scanner
 
-**A powerful, native barcode and QR code scanner for React Native**
+**A powerful, native barcode and QR code scanner for React Native with configurable target area scanning**
 
-![React Native Barcode Scanner Demo - QR Code and Barcode Scanning with Focus Area](./preview.gif)
+![React Native Barcode Scanner Demo - QR Code and Barcode Scanning with Target Area](./preview.gif)
 
 [![npm version](https://img.shields.io/npm/v/@cleanuidev/react-native-scanner?label=beta&color=blue)](https://www.npmjs.com/package/@cleanuidev/react-native-scanner)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -26,10 +26,10 @@
 | Feature | Description |
 |:------:|:-----------|
 | 🚀 **Native Performance** | Built with CameraX & ML Kit (Android) and AVFoundation & Vision (iOS) for optimal performance |
-| 🎯 **Focus Area** | Configurable focus area with optional overlay for precise scanning |
+| 🎯 **Target Area Scanning** | Scan barcodes within configurable target areas for precise detection |
 | 🔦 **Torch Control** | Built-in flashlight/torch control |
 | 📊 **Multiple Formats** | Support for QR codes, Code128, Code39, EAN, UPC, and more |
-| 🎨 **Customizable** | Configurable focus area colors, barcode frame visualization, and scanning behavior |
+| 🎨 **Customizable** | Configurable target area colors, barcode frame visualization, and scanning behavior |
 | 📱 **Cross Platform** | Android & iOS support (new Fabric architecture) |
 
 </div>
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
 });
 ```
 
-### Scanner with Focus Area
+### Scanner with Target Area
 
 ```tsx
 import React, { useState } from 'react';
@@ -139,12 +139,12 @@ import ScannerView, { BarcodeFormat } from '@cleanuidev/react-native-scanner';
 export default function FocusAreaScanner() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   
-  // Focus area configuration
+  // Target area configuration
   const focusAreaConfig = {
-    enabled: true,        // Only scan barcodes within the focus area
-    showOverlay: true,    // Show the focus area overlay
-    size: 300,           // Size of the focus area (square)
-    color: '#00FF00',    // Color of the focus area border
+    enabled: true,        // Only scan barcodes within the target area
+    showOverlay: true,    // Show overlay outside the target area
+    size: 300,           // Size of the target area (square)
+    color: '#00FF00',    // Color of the target area border
   };
 
   // Barcode frames configuration
@@ -198,7 +198,7 @@ export default function FocusAreaScanner() {
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `barcodeTypes` | `BarcodeFormat[]` | `[BarcodeFormat.QR_CODE]` | Array of barcode formats to scan |
-| `focusArea` | `FocusAreaConfig` | - | Focus area configuration |
+| `focusArea` | `FocusAreaConfig` | - | Target area configuration for precise scanning |
 | `barcodeFrames` | `BarcodeFramesConfig` | - | Barcode frame visualization configuration |
 | `torch` | `boolean` | `false` | Enable/disable torch/flashlight |
 | `zoom` | `number` | `1.0` | Camera zoom level |
@@ -213,10 +213,10 @@ export default function FocusAreaScanner() {
 
 ```tsx
 type FocusAreaConfig = {
-  enabled?: boolean;        // Whether to restrict scanning to focus area only
-  size?: FrameSize;         // Size of the focus area
-  color?: string;           // Color of focus area border
-  showOverlay?: boolean;    // Whether to draw the focus area overlay
+  enabled?: boolean;        // Whether to restrict scanning to target area only
+  size?: FrameSize;         // Size of the target area
+  color?: string;           // Color of target area border
+  showOverlay?: boolean;    // Whether to draw overlay outside the target area
 };
 ```
 
@@ -226,7 +226,7 @@ type FocusAreaConfig = {
 type BarcodeFramesConfig = {
   enabled?: boolean;        // Whether to draw frames around detected barcodes
   color?: string;           // Color of barcode frames
-  onlyInFocusArea?: boolean; // Only show frames for barcodes in focus area
+  onlyInFocusArea?: boolean; // Only show frames for barcodes in target area
 };
 ```
 
@@ -311,16 +311,16 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 }
 ```
 
-## Focus Area Configuration
+## Target Area Configuration
 
-The focus area feature provides precise control over where barcodes are scanned:
+The target area feature provides precise control over where barcodes are scanned:
 
-### Basic Focus Area
+### Basic Target Area
 
 ```tsx
 <ScannerView
   focusArea={{
-    showOverlay: true,    // Show visual overlay
+    showOverlay: true,    // Show overlay outside the target area
     size: 300,           // 300x300 pixel square
     color: '#00FF00',    // Green border
   }}
@@ -328,30 +328,61 @@ The focus area feature provides precise control over where barcodes are scanned:
 />
 ```
 
-### Focus Area with Restricted Scanning
+### Target Area with Restricted Scanning
 
 ```tsx
 <ScannerView
   focusArea={{
-    enabled: true,        // Only scan within focus area
-    showOverlay: true,    // Show visual overlay
+    enabled: true,        // Only scan within target area
+    showOverlay: true,    // Show overlay outside the target area
     size: 300,           // 300x300 pixel square
     color: '#00FF00',    // Green border
   }}
-  // Only scans within the focus area
+  // Only scans within the target area
 />
 ```
 
-### Rectangular Focus Area
+### Rectangular Target Area
 
 ```tsx
 <ScannerView
   focusArea={{
     enabled: true,
     showOverlay: true,
-    size: { width: 300, height: 200 }, // Rectangular focus area
+    size: { width: 300, height: 200 }, // Rectangular target area
     color: '#00FF00',
   }}
+/>
+```
+
+### Positioning Target Area with Coordinates
+
+You can position the target area anywhere on the screen using percentage-based coordinates (0-100):
+
+```tsx
+<ScannerView
+  focusArea={{
+    enabled: true,
+    showOverlay: true,
+    size: 300,
+    position: { x: 50, y: 50 }, // Center position (default)
+    color: '#00FF00',
+  }}
+/>
+```
+
+**Example: Position target area at top center**
+
+```tsx
+<ScannerView
+  focusArea={{
+    enabled: true,
+    showOverlay: true,
+    size: 250,
+    position: { x: 50, y: 25 }, // Top center
+    color: '#00FF00',
+  }}
+  onBarcodeScanned={handleBarcodeScanned}
 />
 ```
 
@@ -371,7 +402,7 @@ The scanner can display visual frames around detected barcodes to help users see
 />
 ```
 
-### Show Frames Only in Focus Area
+### Show Frames Only in Target Area
 
 ```tsx
 <ScannerView
@@ -383,7 +414,7 @@ The scanner can display visual frames around detected barcodes to help users see
   barcodeFrames={{
     enabled: true,
     color: '#FF0000',
-    onlyInFocusArea: true, // Only show frames for barcodes in focus area
+    onlyInFocusArea: true, // Only show frames for barcodes in target area
   }}
 />
 ```
@@ -566,6 +597,19 @@ See the `example/` directory for complete working examples, including the "New P
 For bug reports, feature requests, and general questions:
 - 📝 [Open an issue](https://github.com/cleanui-dev/react-native-scanner/issues) on GitHub
 - 💬 Use GitHub Discussions for questions and community help
+
+### Support the Maintainer
+
+If you find this library useful, consider supporting the maintainer/developer directly through donations:
+
+- 💰 [Donate via PayPal](https://paypal.me/rahulgwebdev) - Support the maintainer directly and help keep this project maintained and improved
+- ⭐ Star the repository - Show your appreciation and help others discover this library
+
+**Your donations help:**
+- 🐛 Maintain and fix bugs
+- ✨ Add new features and improvements
+- 📚 Keep documentation up to date
+- ⚡ Ensure long-term sustainability of the project
 
 ### Commercial Support & Consulting
 

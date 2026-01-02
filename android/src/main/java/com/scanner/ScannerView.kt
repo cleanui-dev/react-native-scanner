@@ -222,6 +222,7 @@ class ScannerView : FrameLayout {
 
     if (!hasCameraPermission()) {
       Log.e(TAG, "Camera permission not granted")
+      emitOnScannerError("Camera permission not granted", "CAMERA_PERMISSION_DENIED")
       return
     }
 
@@ -331,8 +332,16 @@ class ScannerView : FrameLayout {
       // Set up auto-focus on frame center (if focus area is enabled)
       setupAutoFocusOnFrame()
 
+      // Emit onLoad event after camera is successfully started
+      emitOnLoadEvent(success = true)
+
     } catch (exc: Exception) {
       Log.e(TAG, "Use case binding failed", exc)
+      // Emit onScannerError event for camera initialization failure
+      emitOnScannerError(
+        error = exc.message ?: "Camera binding failed",
+        code = "CAMERA_INITIALIZATION_FAILED"
+      )
     }
   }
 
@@ -450,12 +459,14 @@ class ScannerView : FrameLayout {
                 // Debounce: Prevent rapid duplicate emissions
                 // If we've emitted recently (within debounce interval), skip this emission
                 // This prevents multiple alerts when pauseScanning is set but detection callbacks are still in flight
+                Log.d(TAG, "📊 Debounce check: interval=${barcodeEmissionDebounceInterval}ms, timeSinceLast=${timeSinceLastEmission}ms")
                 if (timeSinceLastEmission < barcodeEmissionDebounceInterval) {
-                  Log.d(TAG, "⏭️ Skipping barcode emission (debounced, last emission was ${timeSinceLastEmission}ms ago)")
+                  Log.d(TAG, "⏭️ Skipping barcode emission (debounced, last emission was ${timeSinceLastEmission}ms ago, interval=${barcodeEmissionDebounceInterval}ms)")
                   return@addOnSuccessListener
                 }
 
                 lastBarcodeEmissionTime = currentTime
+                Log.d(TAG, "✅ Emitting barcode (interval=${barcodeEmissionDebounceInterval}ms, timeSinceLast=${timeSinceLastEmission}ms)")
 
                 // Create array of barcode events
                 val barcodeEvents = Arguments.createArray()
@@ -502,6 +513,11 @@ class ScannerView : FrameLayout {
             }
           }
           .addOnFailureListener { e ->
+            // Emit onScannerError event for barcode detection failure
+            emitOnScannerError(
+              error = e.message ?: "Barcode detection failed",
+              code = "BARCODE_DETECTION_FAILED"
+            )
             Log.e(TAG, "Barcode scanning failed", e)
           }
           .addOnCompleteListener {
@@ -613,8 +629,48 @@ class ScannerView : FrameLayout {
 
   fun setBarcodeEmissionInterval(intervalSeconds: Double) {
     // Convert seconds to milliseconds, ensure non-negative
+    val previousInterval = barcodeEmissionDebounceInterval
+    Log.d(TAG, "📊 [ScannerView] setBarcodeEmissionInterval called with: ${intervalSeconds}s")
     barcodeEmissionDebounceInterval = max(0, (intervalSeconds * 1000).toLong())
-    Log.d(TAG, "Barcode emission interval set to: ${barcodeEmissionDebounceInterval}ms")
+    Log.d(TAG, "📊 ScannerView.setBarcodeEmissionInterval: ${intervalSeconds}s -> ${barcodeEmissionDebounceInterval}ms (was ${previousInterval}ms)")
+    
+    if (barcodeEmissionDebounceInterval == 0L) {
+      Log.d(TAG, "📊 ⚠️ Debouncing DISABLED (interval = 0ms)")
+    } else {
+      Log.d(TAG, "📊 ✅ Debouncing ENABLED (interval = ${barcodeEmissionDebounceInterval}ms)")
+    }
+  }
+
+  private fun emitOnLoadEvent(success: Boolean, error: String? = null) {
+    val ctx = reactContext
+    if (ctx is ThemedReactContext) {
+      ctx.runOnUiQueueThread {
+        val eventData = Arguments.createMap().apply {
+          putBoolean("success", success)
+          if (error != null) {
+            putString("error", error)
+          }
+        }
+        ctx.getJSModule(RCTEventEmitter::class.java)
+          .receiveEvent(this@ScannerView.id, "onLoad", eventData)
+        Log.d(TAG, "✅ onLoad event emitted: success=$success, error=$error")
+      }
+    }
+  }
+
+  private fun emitOnScannerError(error: String, code: String) {
+    val ctx = reactContext
+    if (ctx is ThemedReactContext) {
+      ctx.runOnUiQueueThread {
+        val eventData = Arguments.createMap().apply {
+          putString("error", error)
+          putString("code", code)
+        }
+        ctx.getJSModule(RCTEventEmitter::class.java)
+          .receiveEvent(this@ScannerView.id, "onScannerError", eventData)
+        Log.d(TAG, "✅ onScannerError event emitted: code=$code, error=$error")
+      }
+    }
   }
 
   fun setBarcodeScanStrategy(strategy: String) {
