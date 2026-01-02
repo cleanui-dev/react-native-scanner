@@ -12,12 +12,12 @@ import {
   ScannerView,
   BarcodeScanStrategy,
   BarcodeFormat,
-} from '@cleanui/react-native-scanner';
+} from '@cleanuidev/react-native-scanner';
 import type {
   BarcodeScannedEvent,
   BarcodeScannedEventPayload,
   ScannerErrorEvent,
-} from '@cleanui/react-native-scanner';
+} from '@cleanuidev/react-native-scanner';
 
 const BarcodeScanStrategyExample: React.FC = () => {
   const [selectedStrategy, setSelectedStrategy] = useState<BarcodeScanStrategy>(

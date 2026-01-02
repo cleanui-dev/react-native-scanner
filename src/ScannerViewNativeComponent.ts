@@ -6,6 +6,7 @@ import {
 import type {
   DirectEventHandler,
   Double,
+  WithDefault,
 } from 'react-native/Libraries/Types/CodegenTypesNamespace';
 
 // Define codegen types locally (no longer exported from react-native in 0.83)
@@ -111,7 +112,7 @@ export interface NativeProps extends ViewProps {
    * Prevents rapid duplicate detections. Set to 0 to disable debouncing.
    * @default 0.5
    */
-  barcodeEmissionInterval?: Double;
+  barcodeEmissionInterval?: WithDefault<Double, 0.5>;
 
   onBarcodeScanned?: DirectEventHandler<BarcodeScannedEventPayload>;
   onScannerError?: DirectEventHandler<ScannerErrorEventPayload>;
