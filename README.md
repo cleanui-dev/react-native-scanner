@@ -103,9 +103,9 @@ yarn add @cleanuidev/react-native-scanner@beta
 To install a specific beta version:
 
 ```bash
-npm install @cleanuidev/react-native-scanner@1.0.0-beta.4
+npm install @cleanuidev/react-native-scanner@1.0.0-beta.5
 # or
-yarn add @cleanuidev/react-native-scanner@1.0.0-beta.4
+yarn add @cleanuidev/react-native-scanner@1.0.0-beta.5
 ```
 
 > **Note**: Once the library reaches stable release (1.0.0), you can install it without the `@beta` tag:
@@ -724,7 +724,7 @@ Yes! The target area is optional. By default, you can scan the entire camera vie
 QR Code, Code128, Code39, EAN-13, EAN-8, UPC-A, UPC-E, Data Matrix, PDF417, Aztec, and ITF (Interleaved 2 of 5). See the [Barcode Formats](#barcode-formats) section for the complete list.
 
 ### Is it production-ready?
-The library is currently in beta (1.0.0-beta.4) but is stable and actively maintained. Production use is recommended with proper testing. We're working towards a stable 1.0.0 release.
+The library is currently in beta (1.0.0-beta.5) but is stable and actively maintained. Production use is recommended with proper testing. We're working towards a stable 1.0.0 release.
 
 ### Does it work with React Native 0.83+?
 Yes! The library supports React Native 0.83 and newer versions, including full support for the new architecture.
