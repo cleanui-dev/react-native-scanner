@@ -47,6 +47,9 @@ class CameraManager: NSObject, CameraControlProtocol {
     private var desiredTorchLevel: Float = 1.0
     private var desiredZoomLevel: CGFloat = 1.0
     
+    /// Observer for subject area change (refocus when scene changes, like native Camera app)
+    private var subjectAreaObserver: NSObjectProtocol?
+    
     // MARK: - Initialization
     
     override init() {
@@ -81,9 +84,10 @@ class CameraManager: NSObject, CameraControlProtocol {
                     self.isSessionRunning = true
                 }
 
-                // Apply any desired settings now that the session/device exists
+                // Apply settings after session is running (native camera app behavior)
                 self.applyZoom()
                 self.applyTorch()
+                self.setupFocusAndExposure()
                 
                 DispatchQueue.main.async {
                     self.delegate?.cameraManagerDidStart(self)
@@ -94,6 +98,7 @@ class CameraManager: NSObject, CameraControlProtocol {
     
     /// Stop the camera session
     func stopCamera() {
+        unregisterSubjectAreaChangeObserver()
         sessionQueue.async { [weak self] in
             guard let self = self, self.isSessionRunning else { return }
             
@@ -126,6 +131,17 @@ class CameraManager: NSObject, CameraControlProtocol {
         }
     }
     
+    /// Set focus and exposure point of interest for better scanning of small barcodes/QR codes.
+    /// Call this after the camera has started (e.g. when focus area is known).
+    /// - Parameters:
+    ///   - normalizedX: X in range 0...1 (0.5 = center)
+    ///   - normalizedY: Y in range 0...1 (0.5 = center)
+    func setFocusPointOfInterest(normalizedX: CGFloat, normalizedY: CGFloat) {
+        sessionQueue.async { [weak self] in
+            self?.applyFocusPointOfInterest(normalizedX: normalizedX, normalizedY: normalizedY)
+        }
+    }
+    
     /// Check if torch is available
     /// - Returns: True if torch is available
     func isTorchAvailable() -> Bool {
@@ -144,7 +160,14 @@ class CameraManager: NSObject, CameraControlProtocol {
     /// Configure the capture session
     private func configureCaptureSession() {
         captureSession.beginConfiguration()
-        captureSession.sessionPreset = .high
+        // Prefer full HD for sharper small barcode/QR capture when supported (e.g. iPhone 15)
+        if captureSession.canSetSessionPreset(.hd1920x1080) {
+            captureSession.sessionPreset = .hd1920x1080
+            print("[CameraManager] Session preset: hd1920x1080")
+        } else {
+            captureSession.sessionPreset = .high
+            print("[CameraManager] Session preset: high")
+        }
         
         // Setup camera input
         guard setupCameraInput() else {
@@ -178,7 +201,16 @@ class CameraManager: NSObject, CameraControlProtocol {
             print("[CameraManager] No camera device available")
             return false
         }
-        
+
+        // Bias autofocus towards near objects (ideal for barcodes/QR codes held close to camera).
+        // Must be configured before adding the device to an active session to be effective.
+        lockDeviceForConfiguration(device) { device in
+            if device.isAutoFocusRangeRestrictionSupported {
+                device.autoFocusRangeRestriction = .near
+                print("[CameraManager] ✅ Auto-focus range restriction set to NEAR")
+            }
+        }
+
         do {
             let input = try AVCaptureDeviceInput(device: device)
             
@@ -261,6 +293,103 @@ class CameraManager: NSObject, CameraControlProtocol {
         }
     }
     
+    // MARK: - Focus and Exposure (for small barcode/QR scanning)
+    
+    /// Enable continuous autofocus and continuous auto-exposure (native Camera app behavior).
+    /// Applied after the session is running so the device is fully active.
+    private func setupFocusAndExposure() {
+        guard let device = currentDevice else { return }
+        lockDeviceForConfiguration(device) { device in
+            // Continuous autofocus: camera keeps refocusing so small codes stay sharp
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+                print("[CameraManager] ✅ Continuous autofocus enabled")
+            } else if device.isFocusModeSupported(.autoFocus) {
+                device.focusMode = .autoFocus
+                print("[CameraManager] ✅ Auto focus enabled (continuous not supported)")
+            }
+            // Continuous auto-exposure: adapts to lighting for better small code readability
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+                print("[CameraManager] ✅ Continuous auto-exposure enabled")
+            }
+            // Default focus point at center (device coords); overridden by setFocusPointOfInterest
+            let center = CGPoint(x: 0.5, y: 0.5)
+            if device.isFocusPointOfInterestSupported && device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusPointOfInterest = center
+            }
+            if device.isExposurePointOfInterestSupported && device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposurePointOfInterest = center
+            }
+            // Native Camera behavior: refocus when scene changes (lighting, movement, etc.)
+            if device.isSubjectAreaChangeMonitoringEnabled == false {
+                device.isSubjectAreaChangeMonitoringEnabled = true
+                print("[CameraManager] ✅ Subject area change monitoring enabled")
+            }
+        }
+        // Observe scene changes and re-apply continuous focus (like native Camera app)
+        registerSubjectAreaChangeObserverIfNeeded()
+    }
+    
+    /// When the scene changes, re-apply continuous focus so the camera refocuses.
+    private func registerSubjectAreaChangeObserverIfNeeded() {
+        guard subjectAreaObserver == nil else { return }
+        subjectAreaObserver = NotificationCenter.default.addObserver(
+            forName: .AVCaptureDeviceSubjectAreaDidChange,
+            object: currentDevice,
+            queue: .main
+        ) { [weak self] _ in
+            self?.sessionQueue.async {
+                self?.reapplyContinuousFocus()
+            }
+        }
+        print("[CameraManager] Subject area change observer registered")
+    }
+    
+    private func unregisterSubjectAreaChangeObserver() {
+        if let observer = subjectAreaObserver {
+            NotificationCenter.default.removeObserver(observer)
+            subjectAreaObserver = nil
+            print("[CameraManager] Subject area change observer removed")
+        }
+    }
+    
+    /// Re-apply continuous focus and exposure (called when scene changes).
+    private func reapplyContinuousFocus() {
+        guard let device = currentDevice else { return }
+        lockDeviceForConfiguration(device) { device in
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+        }
+    }
+    
+    /// Set focus and exposure point of interest (e.g. center of focus area) so the camera
+    /// prioritizes that region. The inputs are expected to already be in device coordinates
+    /// (0,0 = top-left, 1,1 = bottom-right) as returned by AVCaptureVideoPreviewLayer helpers.
+    private func applyFocusPointOfInterest(normalizedX: CGFloat, normalizedY: CGFloat) {
+        guard let device = currentDevice else { return }
+        let devicePoint = CGPoint(x: normalizedX, y: normalizedY)
+        lockDeviceForConfiguration(device) { device in
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = devicePoint
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+            }
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = devicePoint
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+            }
+            print("[CameraManager] Focus point of interest set (view: \(normalizedX), \(normalizedY) → device: \(devicePoint.x), \(devicePoint.y))")
+        }
+    }
+    
     /// Setup video output
     /// - Returns: True if setup successful
     @discardableResult
@@ -296,12 +425,18 @@ class CameraManager: NSObject, CameraControlProtocol {
     /// Get the default camera device (back camera)
     /// - Returns: The camera device or nil
     private func getDefaultCameraDevice() -> AVCaptureDevice? {
-        // Prefer a BACK camera that supports torch.
+        // Prefer the physical wide‑angle back camera for barcode scanning.
+        // Using the virtual multi‑camera (e.g. builtInTripleCamera) on newer iPhones
+        // can cause macro / close‑range focus issues for small barcodes.
+        if let wideBack = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
+            print("[CameraManager] ✅ Using back wide‑angle camera: \(wideBack.localizedName)")
+            return wideBack
+        }
+
+        // Fallback: look for any other back camera with torch (dual, telephoto, etc.)
         let deviceTypes: [AVCaptureDevice.DeviceType] = [
-            .builtInTripleCamera,
             .builtInDualCamera,
             .builtInDualWideCamera,
-            .builtInWideAngleCamera,
             .builtInTelephotoCamera,
             .builtInUltraWideCamera,
         ]
@@ -313,7 +448,7 @@ class CameraManager: NSObject, CameraControlProtocol {
         )
 
         if let torchBack = discovery.devices.first(where: { $0.hasTorch }) {
-            print("[CameraManager] ✅ Using back camera with torch: \(torchBack.localizedName)")
+            print("[CameraManager] ✅ Using fallback back camera with torch: \(torchBack.localizedName)")
             return torchBack
         }
 
@@ -371,6 +506,7 @@ class CameraManager: NSObject, CameraControlProtocol {
     }
     
     deinit {
+        unregisterSubjectAreaChangeObserver()
         stopCamera()
         print("[CameraManager] Deinitialized")
     }

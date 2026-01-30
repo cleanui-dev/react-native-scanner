@@ -146,6 +146,8 @@ class ScannerViewImpl: UIView {
     @objc func configureFocusArea(_ config: [String: Any]) {
         focusAreaConfig = FocusAreaConfig.from(dict: config)
         focusAreaOverlay.updateFocusArea(config: focusAreaConfig)
+        // Update camera focus point to focus area center for better small barcode scanning
+        setupFocusPointOfInterest()
         print("[ScannerViewImpl] Focus area configured")
     }
     
@@ -520,8 +522,36 @@ extension ScannerViewImpl: CameraManagerDelegate {
             // Check bounds multiple times with delay to catch layout
             self.attemptToAddPreviewLayer(attempt: 0)
             
+            // Set focus point of interest (center or focus area center) for better small barcode/QR scanning
+            self.setupFocusPointOfInterest()
+            
             self.emitLoadEvent(success: true)
         }
+    }
+    
+    /// Set the camera focus point of interest to the focus area center (or screen center)
+    /// so continuous autofocus prioritizes that region and small barcodes/QR codes stay sharp.
+    private func setupFocusPointOfInterest() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard let previewLayer = self.previewLayer else { return }
+
+        // 1) Get center point in view coordinates (either focus area center or view center)
+        let centerPointInView: CGPoint
+        if focusAreaConfig.enabled, let focusRect = focusAreaOverlay.getFocusAreaFrame() {
+            centerPointInView = CGPoint(x: focusRect.midX, y: focusRect.midY)
+        } else {
+            centerPointInView = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
+
+        // 2) Convert from view/layer space into device focus coordinates using AVFoundation helper
+        let pointInLayer = previewLayer.convert(centerPointInView, from: self.layer)
+        let devicePoint = previewLayer.captureDevicePointConverted(fromLayerPoint: pointInLayer)
+
+        // 3) Pass device-normalized coordinates (0,0 top-left, 1,1 bottom-right) to camera manager
+        cameraManager.setFocusPointOfInterest(
+            normalizedX: devicePoint.x,
+            normalizedY: devicePoint.y
+        )
     }
     
     private func attemptToAddPreviewLayer(attempt: Int) {
