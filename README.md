@@ -4,7 +4,7 @@
 
 **A powerful, native barcode and QR code scanner for React Native with configurable target area scanning. Limit scan area and restrict scanning to a specific region.**
 
-![React Native Barcode Scanner Demo - QR Code and Barcode Scanning with Target Area](./preview.gif)
+![React Native Barcode Scanner Demo - QR Code and Barcode Scanning with Target Area](https://raw.githubusercontent.com/cleanui-dev/react-native-scanner/main/preview.gif)
 
 [![npm version](https://img.shields.io/npm/v/@cleanuidev/react-native-scanner?label=beta&color=blue)](https://www.npmjs.com/package/@cleanuidev/react-native-scanner)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -103,9 +103,9 @@ yarn add @cleanuidev/react-native-scanner@beta
 To install a specific beta version:
 
 ```bash
-npm install @cleanuidev/react-native-scanner@1.0.0-beta.5
+npm install @cleanuidev/react-native-scanner@1.0.0-beta.6
 # or
-yarn add @cleanuidev/react-native-scanner@1.0.0-beta.5
+yarn add @cleanuidev/react-native-scanner@1.0.0-beta.6
 ```
 
 > **Note**: Once the library reaches stable release (1.0.0), you can install it without the `@beta` tag:
@@ -724,7 +724,7 @@ Yes! The target area is optional. By default, you can scan the entire camera vie
 QR Code, Code128, Code39, EAN-13, EAN-8, UPC-A, UPC-E, Data Matrix, PDF417, Aztec, and ITF (Interleaved 2 of 5). See the [Barcode Formats](#barcode-formats) section for the complete list.
 
 ### Is it production-ready?
-The library is currently in beta (1.0.0-beta.5) but is stable and actively maintained. Production use is recommended with proper testing. We're working towards a stable 1.0.0 release.
+The library is currently in beta (1.0.0-beta.6) but is stable and actively maintained. Production use is recommended with proper testing. We're working towards a stable 1.0.0 release.
 
 ### Does it work with React Native 0.83+?
 Yes! The library supports React Native 0.83 and newer versions, including full support for the new architecture.
