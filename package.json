@@ -1,6 +1,6 @@
 {
   "name": "@cleanuidev/react-native-scanner",
-  "version": "1.0.0-beta.3",
+  "version": "1.0.0-beta.6",
   "description": "High-performance native barcode and QR code scanner for React Native. Scan barcodes in configurable target areas for precise detection. Built with CameraX & ML Kit (Android) and AVFoundation & Vision (iOS).",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -73,14 +73,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rahulgwebdev/react-native-scanner.git"
+    "url": "git+https://github.com/cleanui-dev/react-native-scanner.git"
   },
   "author": "Rahul Gupta <rahulgwebdev@gmail.com> (https://github.com/rahulgwebdev)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rahulgwebdev/react-native-scanner/issues"
+    "url": "https://github.com/cleanui-dev/react-native-scanner/issues"
   },
-  "homepage": "https://github.com/rahulgwebdev/react-native-scanner#readme",
+  "homepage": "https://github.com/cleanui-dev/react-native-scanner#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"

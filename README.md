@@ -2,9 +2,9 @@
 
 # 📱 React Native Scanner
 
-**A powerful, native barcode and QR code scanner for React Native with configurable target area scanning**
+**A powerful, native barcode and QR code scanner for React Native with configurable target area scanning. Limit scan area and restrict scanning to a specific region.**
 
-![React Native Barcode Scanner Demo - QR Code and Barcode Scanning with Target Area](./preview.gif)
+![React Native Barcode Scanner Demo - QR Code and Barcode Scanning with Target Area](https://raw.githubusercontent.com/cleanui-dev/react-native-scanner/main/preview.gif)
 
 [![npm version](https://img.shields.io/npm/v/@cleanuidev/react-native-scanner?label=beta&color=blue)](https://www.npmjs.com/package/@cleanuidev/react-native-scanner)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -13,7 +13,7 @@
 
 **Built with ❤️ by [CleanUI.dev](https://cleanui.dev)**
 
-[Features](#-features) • [Installation](#-installation) • [Documentation](#-documentation)
+[Features](#-features) • [Why Choose](#-why-choose-this-library) • [Comparison](#-comparison-with-other-libraries) • [Quick Start](#-quick-start) • [Installation](#-installation) • [FAQ](#-frequently-asked-questions)
 
 </div>
 
@@ -36,6 +36,56 @@
 
 ---
 
+## 🎯 Why Choose @cleanuidev/react-native-scanner?
+
+- **🎯 Target Area Scanning**: Unlike other libraries, built-in support for limiting scan area, restricting scanning region, and scanning within configurable target areas for precise detection
+- **🚀 High Performance**: Uses native CameraX & ML Kit (Android) and AVFoundation & Vision (iOS) for optimal performance
+- **📱 New Architecture Ready**: Full support for React Native's new architecture (Fabric) on both platforms
+- **🔧 Easy Integration**: Simple API with sensible defaults - get started in minutes
+- **📊 Multiple Scan Strategies**: Process one, all, largest, or sorted barcodes with built-in strategies
+- **🎨 Highly Customizable**: Configurable target areas, barcode frames, and scanning behavior
+- **📦 Lightweight**: Minimal dependencies, optimized bundle size
+- **✅ Active Maintenance**: Regularly updated with bug fixes and new features
+
+---
+
+## 🆚 Comparison with Other Libraries
+
+| Feature | @cleanuidev/react-native-scanner | react-native-vision-camera | expo-camera |
+|---------|--------------------------------|---------------------------|-------------|
+| **Target Area Scanning / Limit Scan Area** | ✅ Built-in (limit scan area, restrict scan region) | ❌ Manual implementation | ❌ Manual implementation |
+| **New Architecture Support** | ✅ Full Fabric support | ✅ Yes | ✅ Yes |
+| **Native Performance** | ✅ CameraX + ML Kit / AVFoundation + Vision | ✅ Yes | ✅ Yes |
+| **Expo Support** | ✅ Dev builds | ✅ Dev builds | ✅ Expo Go |
+| **Barcode Frame Visualization** | ✅ Built-in | ⚠️ Custom | ❌ No |
+| **Multiple Scan Strategies** | ✅ 4 strategies (ONE, ALL, BIGGEST, SORT_BY_BIGGEST) | ⚠️ Custom | ❌ No |
+| **Setup Complexity** | ⭐⭐ Simple | ⭐⭐⭐ Moderate | ⭐ Easy |
+| **Bundle Size** | Small | Medium | Small |
+| **Active Maintenance** | ✅ Active | ✅ Active | ✅ Active |
+| **License** | MIT | MIT | MIT |
+| **Best For** | Barcode/QR scanning with target areas | General camera + scanning | Expo projects |
+
+> **💡 When to choose this library**: If you need barcode/QR code scanning with the ability to limit scan area, restrict scanning region, or scan within target areas, this library provides a simpler API and built-in features compared to general-purpose camera libraries.
+
+---
+
+## ⚡ Quick Start
+
+```bash
+npm install @cleanuidev/react-native-scanner
+```
+
+```tsx
+import ScannerView, { BarcodeFormat } from '@cleanuidev/react-native-scanner';
+
+<ScannerView
+  barcodeTypes={[BarcodeFormat.QR_CODE]}
+  onBarcodeScanned={(e) => console.log(e.nativeEvent)}
+/>
+```
+
+---
+
 ## 📦 Installation
 
 ### Install Beta Version
@@ -53,9 +103,9 @@ yarn add @cleanuidev/react-native-scanner@beta
 To install a specific beta version:
 
 ```bash
-npm install @cleanuidev/react-native-scanner@1.0.0-beta.1
+npm install @cleanuidev/react-native-scanner@1.0.0-beta.6
 # or
-yarn add @cleanuidev/react-native-scanner@1.0.0-beta.1
+yarn add @cleanuidev/react-native-scanner@1.0.0-beta.6
 ```
 
 > **Note**: Once the library reaches stable release (1.0.0), you can install it without the `@beta` tag:
@@ -67,7 +117,71 @@ yarn add @cleanuidev/react-native-scanner@1.0.0-beta.1
 
 ## Platform Setup
 
-### Android Setup
+### Expo Setup
+
+> **⚠️ Important**: This library uses native code and requires an **Expo development build**. It cannot run in Expo Go.
+
+#### Prerequisites
+
+- Expo SDK 53+ (recommended)
+- EAS CLI installed: `npm install -g eas-cli`
+- Expo development build configured
+
+#### Installation
+
+1. **Install the package:**
+
+```bash
+npx expo install @cleanuidev/react-native-scanner
+```
+
+2. **Configure app.json or app.config.js:**
+
+Add camera permissions directly to your Expo configuration:
+
+```json
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs camera access to scan barcodes and QR codes"
+      }
+    },
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.WAKE_LOCK"
+      ]
+    }
+  }
+}
+```
+
+3. **Create a development build:**
+
+For iOS:
+```bash
+eas build --profile development --platform ios
+```
+
+For Android:
+```bash
+eas build --profile development --platform android
+```
+
+Or build locally:
+```bash
+npx expo run:ios
+# or
+npx expo run:android
+```
+
+5. **Install the development build on your device:**
+
+- For EAS builds: Download and install the build from the EAS dashboard
+- For local builds: The build will be installed automatically
+
+### Android Setup (Bare React Native)
 
 Add the following permissions to your `android/app/src/main/AndroidManifest.xml`:
 
@@ -79,7 +193,7 @@ Add the following permissions to your `android/app/src/main/AndroidManifest.xml`
 <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
 ```
 
-### iOS Setup
+### iOS Setup (Bare React Native)
 
 For iOS, add camera usage description to your `ios/YourApp/Info.plist`:
 
@@ -129,7 +243,7 @@ const styles = StyleSheet.create({
 });
 ```
 
-### Scanner with Target Area
+### Scanner with Target Area - Limit Scan Area Example
 
 ```tsx
 import React, { useState } from 'react';
@@ -139,9 +253,9 @@ import ScannerView, { BarcodeFormat } from '@cleanuidev/react-native-scanner';
 export default function FocusAreaScanner() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   
-  // Target area configuration
+  // Target area configuration - limit scan area to specific region
   const focusAreaConfig = {
-    enabled: true,        // Only scan barcodes within the target area
+    enabled: true,        // Limit scan area - only scan barcodes within the target area
     showOverlay: true,    // Show overlay outside the target area
     size: 300,           // Size of the target area (square)
     color: '#00FF00',    // Color of the target area border
@@ -198,7 +312,7 @@ export default function FocusAreaScanner() {
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `barcodeTypes` | `BarcodeFormat[]` | `[BarcodeFormat.QR_CODE]` | Array of barcode formats to scan |
-| `focusArea` | `FocusAreaConfig` | - | Target area configuration for precise scanning |
+| `focusArea` | `FocusAreaConfig` | - | Limit scan area and restrict scanning region - target area configuration for precise scanning |
 | `barcodeFrames` | `BarcodeFramesConfig` | - | Barcode frame visualization configuration |
 | `torch` | `boolean` | `false` | Enable/disable torch/flashlight |
 | `zoom` | `number` | `1.0` | Camera zoom level |
@@ -213,8 +327,8 @@ export default function FocusAreaScanner() {
 
 ```tsx
 type FocusAreaConfig = {
-  enabled?: boolean;        // Whether to restrict scanning to target area only
-  size?: FrameSize;         // Size of the target area
+  enabled?: boolean;        // Limit scan area - whether to restrict scanning to target area only
+  size?: FrameSize;         // Size of the target area (scan region limit)
   color?: string;           // Color of target area border
   showOverlay?: boolean;    // Whether to draw overlay outside the target area
 };
@@ -311,9 +425,9 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
 }
 ```
 
-## Target Area Configuration
+## Target Area Configuration - Limit Scan Area
 
-The target area feature provides precise control over where barcodes are scanned:
+The target area feature provides precise control over where barcodes are scanned. You can limit scan area, restrict scanning region, and confine barcode detection to a specific area on the screen:
 
 ### Basic Target Area
 
@@ -328,19 +442,23 @@ The target area feature provides precise control over where barcodes are scanned
 />
 ```
 
-### Target Area with Restricted Scanning
+### Limit Scan Area - Restricted Scanning
+
+Limit scan area and restrict scanning to a specific region:
 
 ```tsx
 <ScannerView
   focusArea={{
-    enabled: true,        // Only scan within target area
+    enabled: true,        // Limit scan area - only scan barcodes within the target area
     showOverlay: true,    // Show overlay outside the target area
     size: 300,           // 300x300 pixel square
     color: '#00FF00',    // Green border
   }}
-  // Only scans within the target area
+  // Only scans within the limited scan area
 />
 ```
+
+This configuration restricts scanning region and limits scan area to the defined target area only.
 
 ### Rectangular Target Area
 
@@ -581,6 +699,52 @@ const requestCameraPermission = async () => {
 ## Example
 
 See the `example/` directory for complete working examples, including the "New Props Example" that demonstrates the updated prop structure.
+
+## ❓ Frequently Asked Questions
+
+### Is this library compatible with Expo?
+Yes! This library works with Expo development builds (SDK 53+). It does not work with Expo Go due to native code requirements. See the [Expo Setup](#expo-setup) section for detailed instructions.
+
+### Does it support React Native's new architecture?
+Yes! Full support for Fabric (new architecture) on both Android and iOS. The library is built with the new architecture in mind.
+
+### How does it compare to react-native-vision-camera?
+This library focuses specifically on barcode/QR code scanning with built-in target area support and multiple scan strategies. `react-native-vision-camera` is a general-purpose camera library that requires more setup for barcode scanning. If you only need barcode scanning, this library provides a simpler API and built-in features.
+
+### Can I limit the scan area or restrict scanning to a specific region?
+Yes! You can limit the scan area and restrict scanning to a specific region. The target area is optional. By default, you can scan the entire camera view. Set `focusArea.enabled: true` to limit scan area and restrict scanning to a specific region only.
+
+### Is it possible to limit scan area?
+Yes! This library provides built-in support for limiting scan area. You can restrict scanning to a specific region using the `focusArea` prop with `enabled: true`. This allows you to limit scan area to a defined region on the screen, perfect for precise barcode detection.
+
+### Can I scan barcodes outside the target area?
+Yes! The target area is optional. By default, you can scan the entire camera view. Set `focusArea.enabled: true` to restrict scanning to a specific area.
+
+### What barcode formats are supported?
+QR Code, Code128, Code39, EAN-13, EAN-8, UPC-A, UPC-E, Data Matrix, PDF417, Aztec, and ITF (Interleaved 2 of 5). See the [Barcode Formats](#barcode-formats) section for the complete list.
+
+### Is it production-ready?
+The library is currently in beta (1.0.0-beta.6) but is stable and actively maintained. Production use is recommended with proper testing. We're working towards a stable 1.0.0 release.
+
+### Does it work with React Native 0.83+?
+Yes! The library supports React Native 0.83 and newer versions, including full support for the new architecture.
+
+### Can I customize the target area appearance?
+Yes! You can customize the target area size, position, color, and overlay. See the [Target Area Configuration](#target-area-configuration) section for details.
+
+### How do I handle multiple barcodes?
+The library supports multiple scan strategies: process all barcodes, only the first one, only the largest, or all sorted by size. See the [Barcode Scan Strategy](#barcode-scan-strategy) section.
+
+## 💼 Use Cases
+
+- **Retail & E-commerce**: Product barcode scanning for inventory and checkout (limit scan area for precise product detection)
+- **Inventory Management**: Stock tracking and warehouse management systems (restrict scan region for accurate scanning)
+- **Event Management**: QR code ticket scanning and attendee check-in (limit scan area for ticket validation)
+- **Authentication**: QR code-based login and two-factor authentication (restrict scanning region for security)
+- **Payment Systems**: QR code payment processing and transaction scanning (limit scan area for payment codes)
+- **Document Management**: Document barcode scanning and tracking (restrict scan region for document processing)
+- **Asset Tracking**: QR/barcode-based asset management systems (limit scan area for asset identification)
+- **Healthcare**: Medical device and medication barcode scanning (restrict scanning region for medical accuracy)
 
 ## Contributing
 
