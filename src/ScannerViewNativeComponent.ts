@@ -39,11 +39,8 @@ export interface OnLoadEventPayload {
 
 // Event types for use in handlers, taken from the props so they always match
 // what ScannerView passes (react-native's strict API adds fields to these events)
-type EventOf<Handler> = Handler extends
-  | ((event: infer E) => unknown)
-  | undefined
-  ? E
-  : never;
+type EventOf<Handler extends ((event: never) => unknown) | undefined> =
+  Parameters<NonNullable<Handler>>[0];
 export type BarcodeScannedEvent = EventOf<NativeProps['onBarcodeScanned']>;
 export type ScannerErrorEvent = EventOf<NativeProps['onScannerError']>;
 export type OnLoadEvent = EventOf<NativeProps['onLoad']>;
