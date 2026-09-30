@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   cameraContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   camera: {
     flex: 1,
