@@ -156,6 +156,36 @@ describe('Barcode Frame Visualization controls', () => {
     expect(screen.getByText(EAN.data)).toBeOnTheScreen();
   });
 
+  it('only scans inside the focus area by default', async () => {
+    await openScanner('Barcode Frame Visualization');
+
+    expect(scannerProps().focusArea).toMatchObject({
+      enabled: true,
+      showOverlay: true,
+      borderColor: '#00FF00',
+    });
+  });
+
+  it('turns off focus area scanning and its overlay with the switch', async () => {
+    await openScanner('Barcode Frame Visualization');
+    const focusSwitch = screen.getAllByRole('switch')[0]!;
+
+    await fireEvent(focusSwitch, 'valueChange', false);
+
+    expect(scannerProps().focusArea).toMatchObject({
+      enabled: false,
+      showOverlay: false,
+    });
+  });
+
+  it('changes the focus area border color', async () => {
+    await openScanner('Barcode Frame Visualization');
+
+    await fireEvent.press(screen.getByText('Change Color'));
+
+    expect(scannerProps().focusArea.borderColor).not.toBe('#00FF00');
+  });
+
   it('turns barcode frames off with the switch', async () => {
     await openScanner('Barcode Frame Visualization');
     const framesSwitch = screen.getAllByRole('switch')[1]!;

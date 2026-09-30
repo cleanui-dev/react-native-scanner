@@ -30,10 +30,10 @@ export default function BarcodeFrameExample() {
 
   // Focus area configuration
   const [focusAreaConfig, setFocusAreaConfig] = useState({
-    enabled: false, // Only scan in focus area
+    enabled: true, // Only scan in focus area
     showOverlay: true, // Show focus area overlay
     size: { width: 300, height: 100 }, // Rectangular focus area
-    color: '#00FF00', // Color of focus area border
+    borderColor: '#00FF00', // Color of focus area border
   });
 
   // Barcode frames configuration
@@ -69,13 +69,13 @@ export default function BarcodeFrameExample() {
 
   const cycleFrameColor = () => {
     const colors = ['#00FF00', '#FF0000', '#0000FF', '#FFFF00', '#FF00FF'];
-    const currentIndex = colors.indexOf(focusAreaConfig.color);
+    const currentIndex = colors.indexOf(focusAreaConfig.borderColor);
     const nextIndex = (currentIndex + 1) % colors.length;
     const nextColor = colors[nextIndex];
     if (nextColor) {
       setFocusAreaConfig((prev) => ({
         ...prev,
-        color: nextColor,
+        borderColor: nextColor,
       }));
     }
   };
@@ -208,15 +208,16 @@ export default function BarcodeFrameExample() {
             <View style={styles.controlRow}>
               <Text style={styles.controlLabel}>Enable Focus Area</Text>
               <Switch
-                value={focusAreaConfig.showOverlay}
+                value={focusAreaConfig.enabled}
                 onValueChange={(value) =>
                   setFocusAreaConfig((prev) => ({
                     ...prev,
+                    enabled: value, // Only scan inside the focus area
                     showOverlay: value,
                   }))
                 }
                 trackColor={{ false: '#767577', true: '#81b0ff' }}
-                thumbColor={focusAreaConfig.showOverlay ? '#f5dd4b' : '#f4f3f4'}
+                thumbColor={focusAreaConfig.enabled ? '#f5dd4b' : '#f4f3f4'}
               />
             </View>
 
@@ -251,7 +252,7 @@ export default function BarcodeFrameExample() {
                 thumbColor={
                   barcodeFramesConfig.onlyInFocusArea ? '#f5dd4b' : '#f4f3f4'
                 }
-                disabled={!focusAreaConfig.showOverlay}
+                disabled={!focusAreaConfig.enabled}
               />
             </View>
 
@@ -276,10 +277,12 @@ export default function BarcodeFrameExample() {
               <View
                 style={[
                   styles.colorSwatch,
-                  { backgroundColor: focusAreaConfig.color },
+                  { backgroundColor: focusAreaConfig.borderColor },
                 ]}
               />
-              <Text style={styles.colorText}>{focusAreaConfig.color}</Text>
+              <Text style={styles.colorText}>
+                {focusAreaConfig.borderColor}
+              </Text>
             </View>
           </View>
 
