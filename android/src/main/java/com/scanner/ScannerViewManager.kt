@@ -75,10 +75,13 @@ class ScannerViewManager : SimpleViewManager<ScannerView>(),
         val frameSize: FrameSize = when {
           size.type == ReadableType.Number -> FrameSize.Square(size.asInt())
           size.type == ReadableType.Map -> {
+            // asMap() is nullable since RN 0.86 (Expo SDK 57)
             val frameSizeMap = size.asMap()
-            val width = frameSizeMap.getInt("width")
-            val height = frameSizeMap.getInt("height")
-            FrameSize.Rectangle(width, height)
+            if (frameSizeMap != null) {
+              FrameSize.Rectangle(frameSizeMap.getInt("width"), frameSizeMap.getInt("height"))
+            } else {
+              FrameSize.Square(300) // Default
+            }
           }
           else -> FrameSize.Square(300) // Default
         }

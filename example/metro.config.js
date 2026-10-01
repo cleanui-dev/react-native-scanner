@@ -13,4 +13,5 @@ const root = path.resolve(__dirname, '..');
 module.exports = withMetroConfig(getDefaultConfig(__dirname), {
   root,
   dirname: __dirname,
+  conditions: ['react-native-scanner-source'],
 });

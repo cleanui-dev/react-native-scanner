@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   cameraContainer: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFill, // absoluteFillObject was removed in RN 0.86
   },
   camera: {
     flex: 1,

@@ -1,29 +1,23 @@
 import {
   codegenNativeComponent,
+  type CodegenTypes,
+  type HostComponent,
   type ViewProps,
-  type NativeSyntheticEvent,
 } from 'react-native';
-import type {
-  DirectEventHandler,
-  Double,
-  WithDefault,
-} from 'react-native/Libraries/Types/CodegenTypesNamespace';
-
-// Define codegen types locally (no longer exported from react-native in 0.83)
 
 // Event payload types for better TypeScript inference
 export interface BarcodeScannedEventPayload {
   barcodes: {
     data: string;
     format: string;
-    timestamp: Double;
+    timestamp: CodegenTypes.Double;
     boundingBox?: {
-      left: Double;
-      top: Double;
-      right: Double;
-      bottom: Double;
+      left: CodegenTypes.Double;
+      top: CodegenTypes.Double;
+      right: CodegenTypes.Double;
+      bottom: CodegenTypes.Double;
     };
-    area?: Double;
+    area?: CodegenTypes.Double;
   }[];
 }
 
@@ -37,21 +31,23 @@ export interface OnLoadEventPayload {
   error?: string;
 }
 
-// Event types for use in handlers
-export type BarcodeScannedEvent =
-  NativeSyntheticEvent<BarcodeScannedEventPayload>;
-export type ScannerErrorEvent = NativeSyntheticEvent<ScannerErrorEventPayload>;
-export type OnLoadEvent = NativeSyntheticEvent<OnLoadEventPayload>;
+// Event types for use in handlers, taken from the props so they always match
+// what ScannerView passes (react-native's strict API adds fields to these events)
+type EventOf<Handler extends ((event: never) => unknown) | undefined> =
+  Parameters<NonNullable<Handler>>[0];
+export type BarcodeScannedEvent = EventOf<NativeProps['onBarcodeScanned']>;
+export type ScannerErrorEvent = EventOf<NativeProps['onScannerError']>;
+export type OnLoadEvent = EventOf<NativeProps['onLoad']>;
 
 // Nested object types for better codegen compatibility
 export interface FocusAreaSize {
-  width: Double;
-  height: Double;
+  width: CodegenTypes.Double;
+  height: CodegenTypes.Double;
 }
 
 export interface FocusAreaPosition {
-  x: Double; // 0-100
-  y: Double; // 0-100
+  x: CodegenTypes.Double; // 0-100
+  y: CodegenTypes.Double; // 0-100
 }
 
 export interface FocusAreaConfig {
@@ -71,18 +67,18 @@ export interface BarcodeFramesConfig {
 }
 
 export interface BoundingBox {
-  left: Double;
-  top: Double;
-  right: Double;
-  bottom: Double;
+  left: CodegenTypes.Double;
+  top: CodegenTypes.Double;
+  right: CodegenTypes.Double;
+  bottom: CodegenTypes.Double;
 }
 
 export interface BarcodeData {
   data: string;
   format: string;
-  timestamp: Double;
+  timestamp: CodegenTypes.Double;
   boundingBox?: BoundingBox;
-  area?: Double;
+  area?: CodegenTypes.Double;
 }
 
 export interface NativeProps extends ViewProps {
@@ -101,7 +97,7 @@ export interface NativeProps extends ViewProps {
   barcodeFrames?: BarcodeFramesConfig;
 
   torch?: boolean;
-  zoom?: Double;
+  zoom?: CodegenTypes.Double;
   pauseScanning?: boolean;
 
   barcodeScanStrategy?: string;
@@ -112,11 +108,15 @@ export interface NativeProps extends ViewProps {
    * Prevents rapid duplicate detections. Set to 0 to disable debouncing.
    * @default 0.5
    */
-  barcodeEmissionInterval?: WithDefault<Double, 0.5>;
+  barcodeEmissionInterval?: CodegenTypes.WithDefault<CodegenTypes.Double, 0.5>;
 
-  onBarcodeScanned?: DirectEventHandler<BarcodeScannedEventPayload>;
-  onScannerError?: DirectEventHandler<ScannerErrorEventPayload>;
-  onLoad?: DirectEventHandler<OnLoadEventPayload>;
+  onBarcodeScanned?: CodegenTypes.DirectEventHandler<BarcodeScannedEventPayload>;
+  onScannerError?: CodegenTypes.DirectEventHandler<ScannerErrorEventPayload>;
+  onLoad?: CodegenTypes.DirectEventHandler<OnLoadEventPayload>;
 }
 
-export default codegenNativeComponent<NativeProps>('ScannerView');
+// Explicit type so the emitted .d.ts doesn't reference react-native/types_generated,
+// which react-native's package exports block (ScannerView would become `any`)
+export default codegenNativeComponent<NativeProps>(
+  'ScannerView'
+) as HostComponent<NativeProps>;
