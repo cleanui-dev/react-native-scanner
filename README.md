@@ -101,9 +101,9 @@ yarn add @cleanuidev/react-native-scanner@beta
 To install a specific beta version:
 
 ```bash
-npm install @cleanuidev/react-native-scanner@1.0.0-beta.8
+npm install @cleanuidev/react-native-scanner@1.0.0-beta.9
 # or
-yarn add @cleanuidev/react-native-scanner@1.0.0-beta.8
+yarn add @cleanuidev/react-native-scanner@1.0.0-beta.9
 ```
 
 > **Note**: Once the library reaches stable release (1.0.0), you can install it without the `@beta` tag:
@@ -354,13 +354,18 @@ export default function FocusAreaScanner() {
 | `focusArea` | `FocusAreaConfig` | - | Limit scan area and restrict scanning region - target area configuration for precise scanning |
 | `barcodeFrames` | `BarcodeFramesConfig` | - | Barcode frame visualization configuration |
 | `torch` | `boolean` | `false` | Enable/disable torch/flashlight |
-| `zoom` | `number` | `1.0` | Camera zoom level |
+| `zoom` | `number` | `1.0` | Camera zoom level (auto-zoom returns to this level when idle) |
+| `autoZoom` | `boolean` | `true` | Smart zoom for small or distant codes; returns to `zoom` after ~2.5s with no code in view. Only codes inside the focus area drive zoom when the focus area is enabled **or** its overlay is shown (otherwise the whole preview), and zoom is capped so the code stays inside the focus area. It zooms back out when a code overflows the focus area. **Android:** zooms in on codes ML Kit detects but can't decode yet. **iOS:** Vision only reports decodable codes, so instead the starting zoom is raised on devices with a long minimum focus distance (e.g. iPhone 13 Pro and later) so codes are held at a distance the lens can focus. |
+| `maxAutoZoom` | `number` | `5` | Maximum zoom ratio auto-zoom may reach (also limited by the device) |
+| `enablePinchToZoom` | `boolean` | `true` | Pinch on the preview to zoom |
+| `enableTapToFocus` | `boolean` | `true` | Tap on the preview to focus at that point |
 | `pauseScanning` | `boolean` | `false` | Pause/resume scanning |
 | `barcodeScanStrategy` | `BarcodeScanStrategy` | `BarcodeScanStrategy.ALL` | Strategy for processing multiple detected barcodes |
 | `keepScreenOn` | `boolean` | `true` | Keep screen on while camera is active (prevents auto-lock) |
 | `onBarcodeScanned` | `function` | - | Callback when barcode is scanned |
 | `onScannerError` | `function` | - | Callback when scanner encounters an error |
 | `onLoad` | `function` | - | Callback when scanner is loaded |
+| `onZoomChange` | `function` | - | Callback when zoom changes via auto-zoom or pinch |
 
 #### FocusAreaConfig
 
@@ -460,6 +465,15 @@ BarcodeFormat.ITF            // ITF (Interleaved 2 of 5)
   nativeEvent: {
     success: boolean;       // Whether scanner loaded successfully
     error?: string;         // Error message if loading failed
+  }
+}
+```
+
+#### onZoomChange
+```tsx
+{
+  nativeEvent: {
+    zoom: number;           // New zoom ratio
   }
 }
 ```
@@ -758,7 +772,7 @@ Yes! The target area is optional. By default, you can scan the entire camera vie
 QR Code, Code128, Code39, EAN-13, EAN-8, UPC-A, UPC-E, Data Matrix, PDF417, Aztec, and ITF (Interleaved 2 of 5). See the [Barcode Formats](#barcode-formats) section for the complete list.
 
 ### Is it production-ready?
-The library is currently in beta (1.0.0-beta.8) but is stable and actively maintained. Production use is recommended with proper testing. We're working towards a stable 1.0.0 release.
+The library is currently in beta (1.0.0-beta.9) but is stable and actively maintained. Production use is recommended with proper testing. We're working towards a stable 1.0.0 release.
 
 ### Does it work with React Native 0.83+?
 Yes! The library supports React Native 0.83 and newer versions, including full support for the new architecture.

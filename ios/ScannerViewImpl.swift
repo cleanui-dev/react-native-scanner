@@ -56,6 +56,49 @@ class ScannerViewImpl: UIView {
     // Debounce mechanism to prevent multiple rapid barcode detections
     private var lastBarcodeEmissionTime: TimeInterval = 0
     private var barcodeEmissionDebounceInterval: TimeInterval = 0.5 // Default 500ms debounce
+
+    // Zoom state (main thread). baseZoom is where auto-zoom returns to: the zoom prop,
+    // raised to the minimum-focus zoom when auto-zoom is on, or the last pinch.
+    private var userZoom: CGFloat = 1.0
+    private var pinchedZoom: CGFloat?
+    private var baseZoom: CGFloat = 1.0
+    private var currentZoom: CGFloat = 1.0
+    private var autoZoomEnabled: Bool = true
+    private var maxAutoZoom: CGFloat = 5.0
+    private var lastAutoZoomTime: TimeInterval = 0
+    private var lastCandidateTime: TimeInterval = 0
+    private var zoomRampEndTime: TimeInterval = 0
+
+    // Gestures
+    private var pinchStartZoom: CGFloat = 1.0
+    private var isPinching: Bool = false
+    private var focusRevertWorkItem: DispatchWorkItem?
+    private var lastTapFocusTime: TimeInterval = 0
+    private lazy var pinchGesture: UIPinchGestureRecognizer = {
+        let gesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        gesture.cancelsTouchesInView = false
+        return gesture
+    }()
+    private lazy var tapGesture: UITapGestureRecognizer = {
+        let gesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        gesture.cancelsTouchesInView = false
+        return gesture
+    }()
+
+    /// Auto-zoom tuning. "Fill" = barcode size relative to the scan region (focus area or view).
+    private enum AutoZoom {
+        static let minFill: CGFloat = 0.25 // smaller than this -> zoom in
+        static let maxFill: CGFloat = 0.9 // larger than this -> zoom out
+        static let targetFill: CGFloat = 0.5
+        static let zoomOutStep: CGFloat = 0.75 // max zoom-out per step when a barcode overflows the region
+        static let regionInset: CGFloat = 0.05 // keep zoomed barcode this far inside the region
+        static let minStep: CGFloat = 0.1 // ignore changes smaller than 10%
+        static let cooldown: TimeInterval = 0.8 // let focus settle before adjusting again
+        static let resetDelay: TimeInterval = 2.5 // no barcode in region for this long -> zoom back
+        static let rampDuration: TimeInterval = 0.4
+        static let maxMinimumFocusZoom: CGFloat = 3.0
+        static let tapFocusDuration: TimeInterval = 3.0
+    }
     
     // MARK: - Initialization
     
@@ -106,6 +149,9 @@ class ScannerViewImpl: UIView {
         // Configure autoresizing masks
         focusAreaOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         barcodeFrameOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+        addGestureRecognizer(pinchGesture)
+        addGestureRecognizer(tapGesture)
         
         print("[ScannerViewImpl] View hierarchy setup complete")
     }
@@ -148,6 +194,8 @@ class ScannerViewImpl: UIView {
         focusAreaOverlay.updateFocusArea(config: focusAreaConfig)
         // Update camera focus point to focus area center for better small barcode scanning
         setupFocusPointOfInterest()
+        // The minimum-focus zoom depends on the focus area size
+        updateBaseZoom(animated: false)
         print("[ScannerViewImpl] Focus area configured")
     }
     
@@ -171,7 +219,31 @@ class ScannerViewImpl: UIView {
     /// Set zoom level
     /// - Parameter zoom: The zoom level
     @objc func setZoomLevel(_ zoom: NSNumber) {
-        cameraManager.setZoom(level: CGFloat(zoom.doubleValue))
+        userZoom = max(CGFloat(zoom.doubleValue), 1.0)
+        pinchedZoom = nil
+        updateBaseZoom(animated: false, emit: false)
+    }
+
+    /// Enable/disable automatic zoom
+    @objc func setAutoZoom(_ enabled: NSNumber) {
+        autoZoomEnabled = enabled.boolValue
+        updateBaseZoom(animated: true)
+        print("[ScannerViewImpl] Auto-zoom \(autoZoomEnabled ? "enabled" : "disabled")")
+    }
+
+    /// Set the maximum zoom auto-zoom may reach
+    @objc func setMaxAutoZoom(_ value: NSNumber) {
+        maxAutoZoom = max(CGFloat(value.doubleValue), 1.0)
+    }
+
+    /// Enable/disable pinch-to-zoom
+    @objc func setEnablePinchToZoom(_ enabled: NSNumber) {
+        pinchGesture.isEnabled = enabled.boolValue
+    }
+
+    /// Enable/disable tap-to-focus
+    @objc func setEnableTapToFocus(_ enabled: NSNumber) {
+        tapGesture.isEnabled = enabled.boolValue
     }
     
     /// Pause or resume scanning
@@ -295,6 +367,7 @@ class ScannerViewImpl: UIView {
     }
     
     deinit {
+        focusRevertWorkItem?.cancel()
         cameraManager.stopCamera()
         frameManager.shutdown()
         UIApplication.shared.isIdleTimerDisabled = false
@@ -476,6 +549,213 @@ class ScannerViewImpl: UIView {
     }
 }
 
+// MARK: - Zoom & Gestures
+
+extension ScannerViewImpl {
+    /// Region (in view coordinates) used for auto-zoom and focus: the focus area when it is
+    /// enabled or shown, otherwise the whole view.
+    private func scanRegion() -> CGRect? {
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        if focusAreaConfig.enabled || focusAreaConfig.showOverlay,
+           let focusRect = focusAreaOverlay.getFocusAreaFrame() {
+            return focusRect
+        }
+        return bounds
+    }
+
+    private func clampZoom(_ zoom: CGFloat) -> CGFloat {
+        guard let limits = cameraManager.zoomLimits() else { return max(zoom, 1.0) }
+        return min(max(zoom, limits.min), limits.max)
+    }
+
+    private func setZoom(_ zoom: CGFloat, animated: Bool) {
+        let clamped = clampZoom(zoom)
+        currentZoom = clamped
+        if animated {
+            cameraManager.rampZoom(to: clamped)
+            zoomRampEndTime = CACurrentMediaTime() + AutoZoom.rampDuration
+        } else {
+            cameraManager.setZoom(level: clamped)
+        }
+    }
+
+    /// Recompute the zoom auto-zoom rests at and apply it.
+    /// - Parameter emit: report the change via onZoomChange (off for changes made through the zoom prop)
+    private func updateBaseZoom(animated: Bool, emit: Bool = true) {
+        if let pinchedZoom {
+            baseZoom = pinchedZoom
+        } else {
+            var zoom = userZoom
+            if autoZoomEnabled, let minimumFocusZoom = minimumFocusZoom() {
+                zoom = max(zoom, minimumFocusZoom)
+            }
+            baseZoom = clampZoom(zoom)
+        }
+        let changed = abs(baseZoom - currentZoom) > 0.001
+        setZoom(baseZoom, animated: animated)
+        // Report zoom the app didn't set directly (e.g. raised to the minimum-focus zoom)
+        if changed && emit {
+            emitZoomChange(baseZoom)
+        }
+    }
+
+    /// Zoom needed so a small code filling the scan region is still at a focusable distance.
+    private func minimumFocusZoom() -> CGFloat? {
+        guard let region = scanRegion() else { return nil }
+        // The preview (aspect fill, portrait) shows the sensor's long side along the view's long side
+        let longSide = max(bounds.width, bounds.height)
+        guard let factor = cameraManager.minimumFocusZoomFactor(fillFraction: region.width / longSide) else {
+            return nil
+        }
+        return min(factor, min(maxAutoZoom, AutoZoom.maxMinimumFocusZoom))
+    }
+
+    /// Adjust zoom based on barcodes detected inside the scan region.
+    ///
+    /// Only barcodes whose center lies in the scan region (the focus area when enabled or
+    /// shown) are considered, so a barcode outside the focus area never drives the zoom.
+    /// Because zoom scales around the preview center, the zoom-in factor is also capped so the
+    /// target stays inside the region after zooming (important for off-center focus areas).
+    ///
+    /// Unlike ML Kit, Vision only returns barcodes it could decode, so on iOS this mostly backs
+    /// off when a decoded barcode overflows the focus area. A decoded barcode that is emitted
+    /// is left alone (zooming in right after a successful scan would only make the preview jump).
+    /// Zoom-in only happens for observations without a payload, if Vision reports any.
+    ///
+    /// Must be called on the main thread.
+    fileprivate func evaluateAutoZoom(_ observations: [VNBarcodeObservation]) {
+        guard autoZoomEnabled, !isPinching, !isPaused, previewLayer != nil,
+              let region = scanRegion() else { return }
+        let now = CACurrentMediaTime()
+
+        let candidates = observations
+            .map { observation in
+                (observation, CoordinateTransformer.transformVisionRectToViewRect(
+                    observation.boundingBox,
+                    viewSize: bounds.size,
+                    previewLayer: previewLayer
+                ))
+            }
+            .filter { region.contains(CGPoint(x: $0.1.midX, y: $0.1.midY)) }
+
+        guard let (targetObservation, target) = candidates.max(by: {
+            $0.1.width * $0.1.height < $1.1.width * $1.1.height
+        }) else {
+            // Nothing to scan in the region for a while: return to the base zoom
+            if currentZoom > baseZoom * (1 + AutoZoom.minStep),
+               now - lastCandidateTime > AutoZoom.resetDelay,
+               now > zoomRampEndTime {
+                lastCandidateTime = now
+                setZoom(baseZoom, animated: true)
+                emitZoomChange(baseZoom)
+            }
+            return
+        }
+        lastCandidateTime = now
+
+        // A decoded barcode that will actually be emitted (fully inside the focus area when
+        // filtering is on) means this zoom works: leave it alone
+        if candidates.contains(where: { $0.0.payloadStringValue != nil && wouldBeEmitted($0.1) }) {
+            return
+        }
+        guard now > zoomRampEndTime, now - lastAutoZoomTime > AutoZoom.cooldown else { return }
+
+        let fill = max(target.width / region.width, target.height / region.height)
+        guard fill > 0 else { return }
+
+        let factor: CGFloat
+        if !region.contains(target) && currentZoom > baseZoom {
+            // Barcode spills past the region (and is filtered out): back off
+            factor = min(AutoZoom.targetFill / fill, AutoZoom.zoomOutStep)
+        } else if fill < AutoZoom.minFill && targetObservation.payloadStringValue == nil {
+            factor = min(AutoZoom.targetFill / fill, maxZoomFactorKeepingInside(target, region: region))
+        } else if fill > AutoZoom.maxFill && currentZoom > baseZoom {
+            factor = AutoZoom.targetFill / fill
+        } else {
+            return
+        }
+
+        let deviceMax = cameraManager.zoomLimits()?.max ?? maxAutoZoom
+        let upperBound = max(baseZoom, min(maxAutoZoom, deviceMax))
+        let newZoom = min(max(currentZoom * factor, baseZoom), upperBound)
+        guard abs(newZoom - currentZoom) / currentZoom >= AutoZoom.minStep else { return }
+
+        lastAutoZoomTime = now
+        print("[ScannerViewImpl] Auto-zoom: \(currentZoom) -> \(newZoom)")
+        setZoom(newZoom, animated: true)
+        emitZoomChange(newZoom)
+        // Refocus on the region once the ramp is done (unless the user just tapped to focus)
+        DispatchQueue.main.asyncAfter(deadline: .now() + AutoZoom.rampDuration) { [weak self] in
+            self?.setupFocusPointOfInterest(respectingTapFocus: true)
+        }
+    }
+
+    /// Whether a decoded barcode at `rect` (view coordinates) passes `filterByFocusArea`.
+    private func wouldBeEmitted(_ rect: CGRect) -> Bool {
+        guard focusAreaConfig.enabled, let focusRect = focusAreaOverlay.getFocusAreaFrame() else {
+            return true
+        }
+        return focusRect.contains(rect)
+    }
+
+    /// Largest relative zoom factor that keeps `box` inside `region` (inset by a margin),
+    /// given that zoom scales around the center of the preview.
+    private func maxZoomFactorKeepingInside(_ box: CGRect, region: CGRect) -> CGFloat {
+        let cx = bounds.midX
+        let cy = bounds.midY
+        let limits = region.insetBy(dx: region.width * AutoZoom.regionInset,
+                                    dy: region.height * AutoZoom.regionInset)
+
+        var limit = CGFloat.greatestFiniteMagnitude
+        if box.minX < cx { limit = min(limit, (cx - limits.minX) / (cx - box.minX)) }
+        if box.maxX > cx { limit = min(limit, (limits.maxX - cx) / (box.maxX - cx)) }
+        if box.minY < cy { limit = min(limit, (cy - limits.minY) / (cy - box.minY)) }
+        if box.maxY > cy { limit = min(limit, (limits.maxY - cy) / (box.maxY - cy)) }
+        // A limit below 1 means the box already sits at/over the edge: don't zoom in
+        return max(limit, 1.0)
+    }
+
+    @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            isPinching = true
+            pinchStartZoom = currentZoom
+        case .changed:
+            setZoom(pinchStartZoom * gesture.scale, animated: false)
+        case .ended, .cancelled, .failed:
+            isPinching = false
+            // A pinch is the user's chosen zoom: auto-zoom resets back to it
+            pinchedZoom = currentZoom
+            baseZoom = currentZoom
+            emitZoomChange(currentZoom)
+            setupFocusPointOfInterest(respectingTapFocus: true)
+        default:
+            break
+        }
+    }
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        guard let previewLayer = previewLayer else { return }
+        let point = gesture.location(in: self)
+        let pointInLayer = previewLayer.convert(point, from: layer)
+        let devicePoint = previewLayer.captureDevicePointConverted(fromLayerPoint: pointInLayer)
+        cameraManager.setFocusPointOfInterest(normalizedX: devicePoint.x, normalizedY: devicePoint.y)
+        lastTapFocusTime = CACurrentMediaTime()
+
+        // Return focus to the scan region after a while (matches Android's auto-cancel)
+        focusRevertWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.setupFocusPointOfInterest()
+        }
+        focusRevertWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + AutoZoom.tapFocusDuration, execute: workItem)
+    }
+
+    private func emitZoomChange(_ zoom: CGFloat) {
+        delegate?.scannerDidChangeZoom?(["zoom": Double(zoom)])
+    }
+}
+
 // MARK: - CameraManagerDelegate
 
 extension ScannerViewImpl: CameraManagerDelegate {
@@ -492,6 +772,10 @@ extension ScannerViewImpl: CameraManagerDelegate {
             
             // Update barcode frames display
             self.updateBarcodeFrameDisplay(observations)
+
+            DispatchQueue.main.async { [weak self] in
+                self?.evaluateAutoZoom(observations)
+            }
             
             // Emit results if any
             if !results.isEmpty {
@@ -524,6 +808,9 @@ extension ScannerViewImpl: CameraManagerDelegate {
             
             // Set focus point of interest (center or focus area center) for better small barcode/QR scanning
             self.setupFocusPointOfInterest()
+
+            // Apply the base zoom now that device limits / focus distance are known
+            self.updateBaseZoom(animated: false)
             
             self.emitLoadEvent(success: true)
         }
@@ -531,17 +818,17 @@ extension ScannerViewImpl: CameraManagerDelegate {
     
     /// Set the camera focus point of interest to the focus area center (or screen center)
     /// so continuous autofocus prioritizes that region and small barcodes/QR codes stay sharp.
-    private func setupFocusPointOfInterest() {
+    /// - Parameter respectingTapFocus: skip if the user tapped to focus within the last few seconds
+    private func setupFocusPointOfInterest(respectingTapFocus: Bool = false) {
+        if respectingTapFocus && CACurrentMediaTime() - lastTapFocusTime < AutoZoom.tapFocusDuration {
+            return
+        }
         guard bounds.width > 0, bounds.height > 0 else { return }
         guard let previewLayer = self.previewLayer else { return }
 
         // 1) Get center point in view coordinates (either focus area center or view center)
-        let centerPointInView: CGPoint
-        if focusAreaConfig.enabled, let focusRect = focusAreaOverlay.getFocusAreaFrame() {
-            centerPointInView = CGPoint(x: focusRect.midX, y: focusRect.midY)
-        } else {
-            centerPointInView = CGPoint(x: bounds.midX, y: bounds.midY)
-        }
+        guard let region = scanRegion() else { return }
+        let centerPointInView = CGPoint(x: region.midX, y: region.midY)
 
         // 2) Convert from view/layer space into device focus coordinates using AVFoundation helper
         let pointInLayer = previewLayer.convert(centerPointInView, from: self.layer)

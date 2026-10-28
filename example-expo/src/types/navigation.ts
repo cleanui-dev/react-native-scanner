@@ -8,6 +8,7 @@ export type RootStackParamList = {
   BarcodeFrameExample: undefined;
   CameraInfoExample: undefined;
   BarcodeScanStrategyExample: undefined;
+  AutoZoomExample: undefined;
 };
 
 export type NavigationProp = NativeStackNavigationProp<

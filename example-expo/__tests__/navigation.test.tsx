@@ -20,6 +20,7 @@ describe('Home screen', () => {
       'Barcode Frame Visualization',
       'Camera Info',
       'Barcode Scan Strategy',
+      'Auto Zoom & Focus',
       'Basic Scanner',
       'Custom Frame Scanner',
       'Multi-Format Scanner',
@@ -37,6 +38,7 @@ describe('Home screen', () => {
     ['Barcode Frame Visualization', 'Focus Area Configuration'],
     ['Camera Info', 'Loading camera information...'],
     ['Barcode Scan Strategy', 'Select Strategy:'],
+    ['Auto Zoom & Focus', 'Zoom & Focus'],
   ])('"%s" opens its example screen', async (card, screenText) => {
     await render(<App />);
 

@@ -239,6 +239,30 @@ using namespace facebook::react;
         [_scannerImpl performSelector:@selector(setZoomLevel:) withObject:zoomValue];
     }
 
+    // Auto-zoom
+    if (oldViewProps.autoZoom != newViewProps.autoZoom) {
+        if ([_scannerImpl respondsToSelector:@selector(setAutoZoom:)]) {
+            [_scannerImpl performSelector:@selector(setAutoZoom:) withObject:@(newViewProps.autoZoom)];
+        }
+    }
+    if (oldViewProps.maxAutoZoom != newViewProps.maxAutoZoom) {
+        if ([_scannerImpl respondsToSelector:@selector(setMaxAutoZoom:)]) {
+            [_scannerImpl performSelector:@selector(setMaxAutoZoom:) withObject:@(newViewProps.maxAutoZoom)];
+        }
+    }
+
+    // Gestures
+    if (oldViewProps.enablePinchToZoom != newViewProps.enablePinchToZoom) {
+        if ([_scannerImpl respondsToSelector:@selector(setEnablePinchToZoom:)]) {
+            [_scannerImpl performSelector:@selector(setEnablePinchToZoom:) withObject:@(newViewProps.enablePinchToZoom)];
+        }
+    }
+    if (oldViewProps.enableTapToFocus != newViewProps.enableTapToFocus) {
+        if ([_scannerImpl respondsToSelector:@selector(setEnableTapToFocus:)]) {
+            [_scannerImpl performSelector:@selector(setEnableTapToFocus:) withObject:@(newViewProps.enableTapToFocus)];
+        }
+    }
+
     // Pause scanning
     if (oldViewProps.pauseScanning != newViewProps.pauseScanning) {
         NSNumber *pauseValue = @(newViewProps.pauseScanning);
@@ -351,6 +375,19 @@ using namespace facebook::react;
         };
         
         scannerEventEmitter->onLoad(event);
+    }
+}
+
+- (void)scannerDidChangeZoom:(NSDictionary<NSString *,id> *)info
+{
+    if (_eventEmitter) {
+        auto scannerEventEmitter = std::static_pointer_cast<const ScannerViewEventEmitter>(_eventEmitter);
+
+        ScannerViewEventEmitter::OnZoomChange event = {
+            .zoom = [[info objectForKey:@"zoom"] doubleValue]
+        };
+
+        scannerEventEmitter->onZoomChange(event);
     }
 }
 

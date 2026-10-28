@@ -74,6 +74,15 @@ const examples: ExampleCard[] = [
   },
   {
     id: '7',
+    title: 'Auto Zoom & Focus',
+    description:
+      'Auto-zoom to small or distant codes inside the focus area, plus pinch-to-zoom and tap-to-focus',
+    route: 'AutoZoomExample',
+    icon: '🔎',
+    color: '#00BFA5',
+  },
+  {
+    id: '8',
     title: 'Basic Scanner',
     description: 'Simple scanner without frame overlay (coming soon)',
     route: 'Home', // Placeholder
@@ -81,7 +90,7 @@ const examples: ExampleCard[] = [
     color: '#FF9500',
   },
   {
-    id: '8',
+    id: '9',
     title: 'Custom Frame Scanner',
     description:
       'Scanner with customizable frame size and colors (coming soon)',
@@ -90,7 +99,7 @@ const examples: ExampleCard[] = [
     color: '#AF52DE',
   },
   {
-    id: '9',
+    id: '10',
     title: 'Multi-Format Scanner',
     description:
       'Scanner configured for specific barcode formats (coming soon)',
