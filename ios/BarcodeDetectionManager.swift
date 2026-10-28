@@ -30,6 +30,11 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
     
     /// Background queue for detection
     private let detectionQueue: DispatchQueue
+
+    /// Whether a frame is currently being processed. New frames are dropped while busy so
+    /// results never lag behind the live preview (frames would otherwise queue up).
+    private var isProcessingFrame = false
+    private let processingLock = NSLock()
     
     // MARK: - Initialization
     
@@ -91,7 +96,15 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
             completion([])
             return
         }
-        
+
+        processingLock.lock()
+        if isProcessingFrame {
+            processingLock.unlock()
+            return
+        }
+        isProcessingFrame = true
+        processingLock.unlock()
+
         let request = VNDetectBarcodesRequest { request, error in
             if let error = error {
                 print("[BarcodeDetectionManager] Detection error: \(error)")
@@ -114,13 +127,16 @@ class BarcodeDetectionManager: NSObject, BarcodeScannerProtocol {
                                            orientation: orientation,
                                            options: [:])
         
-        detectionQueue.async {
+        detectionQueue.async { [weak self] in
             do {
                 try handler.perform([request])
             } catch {
                 print("[BarcodeDetectionManager] Detection failed: \(error)")
                 completion([])
             }
+            self?.processingLock.lock()
+            self?.isProcessingFrame = false
+            self?.processingLock.unlock()
         }
     }
     

@@ -10,6 +10,7 @@ import RectangularFrameExample from './pages/RectangularFrameExample';
 import BarcodeFrameExample from './pages/BarcodeFrameExample';
 import CameraInfoExample from './pages/CameraInfoExample';
 import BarcodeScanStrategyExample from './pages/BarcodeScanStrategyExample';
+import AutoZoomExample from './pages/AutoZoomExample';
 
 // Import types
 import type { RootStackParamList } from './types/navigation';
@@ -78,6 +79,15 @@ export default function App() {
             component={BarcodeScanStrategyExample}
             options={{
               title: 'Barcode Scan Strategy',
+              headerShown: false,
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="AutoZoomExample"
+            component={AutoZoomExample}
+            options={{
+              title: 'Auto Zoom & Focus',
               headerShown: false,
               gestureEnabled: true,
             }}

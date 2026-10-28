@@ -28,6 +28,11 @@ class ScannerViewManager : SimpleViewManager<ScannerView>(),
     return ScannerView(context)
   }
 
+  override fun onDropViewInstance(view: ScannerView) {
+    super.onDropViewInstance(view)
+    view.destroy()
+  }
+
   // Barcode configuration
   @ReactProp(name = "barcodeTypes")
   override fun setBarcodeTypes(view: ScannerView?, types: ReadableArray?) {
@@ -88,6 +93,8 @@ class ScannerViewManager : SimpleViewManager<ScannerView>(),
         view?.setFrameSize(frameSize)
       }
 
+      view?.onFocusAreaUpdated()
+
       Log.d("ScannerViewManager", "Focus area configured: enabled=$enabled, showOverlay=$showOverlay, borderColor=$borderColor, tintColor=$tintColor, position=$position")
     }
   }
@@ -141,6 +148,32 @@ class ScannerViewManager : SimpleViewManager<ScannerView>(),
   @ReactProp(name = "zoom")
   override fun setZoom(view: ScannerView?, zoom: Double) {
     view?.setZoom(zoom.toFloat())
+  }
+
+  @ReactProp(name = "autoZoom", defaultBoolean = true)
+  override fun setAutoZoom(view: ScannerView, value: Boolean) {
+    view.setAutoZoomEnabled(value)
+  }
+
+  @ReactProp(name = "maxAutoZoom", defaultDouble = 5.0)
+  override fun setMaxAutoZoom(view: ScannerView, value: Double) {
+    view.setMaxAutoZoom(value.toFloat())
+  }
+
+  @ReactProp(name = "enablePinchToZoom", defaultBoolean = true)
+  override fun setEnablePinchToZoom(view: ScannerView, value: Boolean) {
+    view.setPinchToZoomEnabled(value)
+  }
+
+  @ReactProp(name = "enableTapToFocus", defaultBoolean = true)
+  override fun setEnableTapToFocus(view: ScannerView, value: Boolean) {
+    view.setTapToFocusEnabled(value)
+  }
+
+  @ReactProp(name = "onZoomChange")
+  fun setOnZoomChange(view: ScannerView?, onZoomChange: Boolean?) {
+    // This prop is used to register the event handler
+    Log.d("ScannerViewManager", "onZoomChange event handler registered")
   }
 
   @ReactProp(name = "pauseScanning")
@@ -204,6 +237,11 @@ class ScannerViewManager : SimpleViewManager<ScannerView>(),
     map["onScannerError"] = mapOf(
       "phasedRegistrationNames" to mapOf(
         "bubbled" to "onScannerError"
+      )
+    )
+    map["onZoomChange"] = mapOf(
+      "phasedRegistrationNames" to mapOf(
+        "bubbled" to "onZoomChange"
       )
     )
     return map

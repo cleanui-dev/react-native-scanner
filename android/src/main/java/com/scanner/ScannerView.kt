@@ -1,12 +1,17 @@
 package com.scanner
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.*
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.util.Log
 import android.util.Rational
 import android.util.Size
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
@@ -14,16 +19,23 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.camera.core.*
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import android.hardware.camera2.CaptureRequest
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.facebook.react.bridge.*
 import com.facebook.react.uimanager.ThemedReactContext
+import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
@@ -38,6 +50,23 @@ import com.facebook.react.uimanager.events.RCTEventEmitter
 class ScannerView : FrameLayout {
   companion object {
     const val TAG = "ScannerView"
+
+    // Target resolution for barcode analysis. CameraX defaults ImageAnalysis to 640x480,
+    // which is too low to decode small or distant barcodes. 4:3 matches the Preview default
+    // so bounding box mapping onto the preview stays consistent.
+    private val ANALYSIS_TARGET_SIZE = Size(1440, 1080)
+
+    // Auto-zoom tuning. "Fill" = barcode size relative to the scan region (focus area or view).
+    private const val AUTO_ZOOM_MIN_FILL = 0.25f // smaller than this -> zoom in
+    private const val AUTO_ZOOM_MAX_FILL = 0.9f // larger than this (and undecodable) -> zoom out
+    private const val AUTO_ZOOM_TARGET_FILL = 0.5f
+    private const val AUTO_ZOOM_OUT_STEP = 0.75f // max zoom-out per step when a barcode overflows the region
+    private const val AUTO_ZOOM_REGION_INSET = 0.05f // keep zoomed barcode this far inside the region
+    private const val AUTO_ZOOM_MIN_STEP = 0.1f // ignore changes smaller than 10%
+    private const val AUTO_ZOOM_COOLDOWN_MS = 800L // let focus settle before adjusting again
+    private const val AUTO_ZOOM_RESET_DELAY_MS = 2500L // no barcode in region for this long -> zoom back
+    private const val ZOOM_ANIMATION_MS = 250L
+    private const val TAP_FOCUS_HOLD_MS = 3000L // automatic refocus won't override a tap for this long
   }
 
   private var cameraProvider: ProcessCameraProvider? = null
@@ -45,7 +74,9 @@ class ScannerView : FrameLayout {
   private var imageAnalyzer: ImageAnalysis? = null
   private var preview: Preview? = null
   private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-  private var barcodeScanner = BarcodeScanning.getClient()
+  // Written on the main thread, read on the analysis thread
+  @Volatile
+  private var barcodeScanner = createBarcodeScanner(withPotentialBarcodes = true)
   private var previewView: PreviewView? = null
   private var overlayView: FocusAreaView? = null
   private var barcodeFrameOverlayView: BarcodeFrameOverlayView? = null
@@ -68,6 +99,58 @@ class ScannerView : FrameLayout {
   private var reactContext: ThemedReactContext? = null
 
   private var zoom: Float = 1.0f
+
+  // Zoom state. baseZoom is where auto-zoom returns to (zoom prop, or the last pinch).
+  private var baseZoom: Float = 1.0f
+  private var currentZoom: Float = 1.0f
+  private var zoomAnimator: ValueAnimator? = null
+  private var autoZoomEnabled: Boolean = true
+  private var maxAutoZoom: Float = 5.0f
+  private var lastAutoZoomTime: Long = 0
+  private var lastCandidateTime: Long = 0
+
+  // Gestures
+  private var pinchToZoomEnabled: Boolean = true
+  private var tapToFocusEnabled: Boolean = true
+  private var isPinching: Boolean = false
+  private var isMultiTouchGesture: Boolean = false
+  private var lastTapFocusTime: Long = 0
+  private val scaleGestureDetector = ScaleGestureDetector(
+    context,
+    object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+      override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+        isPinching = true
+        zoomAnimator?.cancel()
+        return true
+      }
+
+      override fun onScale(detector: ScaleGestureDetector): Boolean {
+        val zoomState = camera?.cameraInfo?.zoomState?.value ?: return false
+        val newZoom = (currentZoom * detector.scaleFactor)
+          .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+        applyZoomRatio(newZoom)
+        // A pinch is the user's chosen zoom: auto-zoom resets back to it
+        baseZoom = newZoom
+        return true
+      }
+
+      override fun onScaleEnd(detector: ScaleGestureDetector) {
+        isPinching = false
+        emitOnZoomChange(currentZoom)
+        refocusOnScanRegion()
+      }
+    }
+  )
+  private val tapGestureDetector = GestureDetector(
+    context,
+    object : GestureDetector.SimpleOnGestureListener() {
+      override fun onSingleTapUp(e: MotionEvent): Boolean {
+        lastTapFocusTime = SystemClock.uptimeMillis()
+        triggerAutoFocusAt(e.x, e.y)
+        return true
+      }
+    }
+  )
   private var torchEnabled: Boolean = false
   private var isScanningPaused: Boolean = false
 
@@ -211,10 +294,33 @@ class ScannerView : FrameLayout {
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
     stopCamera()
-    barcodeFrameManager.shutdown()
-    
+    // The view may be attached again (navigation, re-parenting): keep the frame manager alive
+    // and only clear it. It is shut down for good in destroy().
+    barcodeFrameManager.clearAllFrames()
+
     // Ensure wake lock is released when view is destroyed
     releaseWakeLock()
+  }
+
+  /**
+   * Release resources for good. Called when React Native drops the view instance.
+   */
+  fun destroy() {
+    stopCamera()
+    barcodeFrameManager.shutdown()
+    releaseWakeLock()
+  }
+
+  /**
+   * ML Kit client. Potential barcodes (detected but not yet decodable) come back with a null
+   * rawValue; they only drive auto-zoom and are never emitted, so they're only requested
+   * while auto-zoom is on.
+   */
+  private fun createBarcodeScanner(withPotentialBarcodes: Boolean): BarcodeScanner {
+    val options = BarcodeScannerOptions.Builder().apply {
+      if (withPotentialBarcodes) enableAllPotentialBarcodes()
+    }.build()
+    return BarcodeScanning.getClient(options)
   }
 
   private fun startCamera() {
@@ -224,6 +330,12 @@ class ScannerView : FrameLayout {
       Log.e(TAG, "Camera permission not granted")
       emitOnScannerError("Camera permission not granted", "CAMERA_PERMISSION_DENIED")
       return
+    }
+
+    // Resources are released in stopCamera(); recreate them when the view is attached again
+    if (cameraExecutor.isShutdown) {
+      cameraExecutor = Executors.newSingleThreadExecutor()
+      barcodeScanner = createBarcodeScanner(withPotentialBarcodes = autoZoomEnabled)
     }
 
     // Acquire wake lock when camera starts
@@ -247,6 +359,8 @@ class ScannerView : FrameLayout {
   }
 
   private fun stopCamera() {
+    if (cameraExecutor.isShutdown) return
+    zoomAnimator?.cancel()
     camera?.cameraControl?.cancelFocusAndMetering()
     cameraProvider?.unbindAll()
     cameraExecutor.shutdown()
@@ -280,6 +394,11 @@ class ScannerView : FrameLayout {
 
       // Preview
       preview = Preview.Builder()
+        .setResolutionSelector(
+          ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .build()
+        )
         .setTargetRotation(previewView?.display?.rotation ?: Surface.ROTATION_0)
         .build()
         .also {
@@ -288,7 +407,17 @@ class ScannerView : FrameLayout {
 
       // Image Analysis
       imageAnalyzer = ImageAnalysis.Builder()
-//        .setTargetResolution(Size(1280, 720)) // review this later if needed
+        .setResolutionSelector(
+          ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .setResolutionStrategy(
+              ResolutionStrategy(
+                ANALYSIS_TARGET_SIZE,
+                ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
+              )
+            )
+            .build()
+        )
         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
         .build()
         .also {
@@ -378,51 +507,203 @@ class ScannerView : FrameLayout {
    * This provides additional focus assistance when a focus area is defined.
    */
   private fun setupAutoFocusOnFrame() {
-    if (!enableFrame) {
-      // Even without focus area overlay, trigger autofocus on screen center
-      triggerAutoFocusOnCenter()
-      return
-    }
-
-    val frame = overlayView?.frameRect ?: run {
-      triggerAutoFocusOnCenter()
-      return
-    }
-    
-    val centerX = frame.centerX()
-    val centerY = frame.centerY()
-
-    val viewWidth = previewView?.width ?: return
-    val viewHeight = previewView?.height ?: return
-
-    val normalizedX = centerX / viewWidth
-    val normalizedY = centerY / viewHeight
-
-    triggerAutoFocusAt(normalizedX, normalizedY)
+    refocusOnScanRegion()
   }
 
   /**
-   * Trigger autofocus at screen center (useful when no focus area is defined)
+   * Region (in view coordinates) used for scanning and auto-zoom: the focus area when it is
+   * enabled or shown, otherwise the whole preview.
    */
-  private fun triggerAutoFocusOnCenter() {
-    triggerAutoFocusAt(0.5f, 0.5f)
+  private fun scanRegion(): RectF? {
+    val view = previewView ?: return null
+    if (view.width == 0 || view.height == 0) return null
+    if (focusAreaEnabled || enableFrame) {
+      overlayView?.frameRect?.let { return RectF(it) }
+    }
+    return RectF(0f, 0f, view.width.toFloat(), view.height.toFloat())
   }
 
   /**
-   * Trigger autofocus at a specific normalized point (0.0-1.0)
+   * Trigger autofocus/exposure at the center of the scan region.
+   * Unless [force] is set, a recent tap-to-focus is respected.
    */
-  private fun triggerAutoFocusAt(normalizedX: Float, normalizedY: Float) {
+  private fun refocusOnScanRegion(force: Boolean = false) {
+    if (!force && SystemClock.uptimeMillis() - lastTapFocusTime < TAP_FOCUS_HOLD_MS) return
+    val region = scanRegion() ?: return
+    triggerAutoFocusAt(region.centerX(), region.centerY())
+  }
+
+  /**
+   * Trigger autofocus at a point in PreviewView coordinates (pixels).
+   * After the auto-cancel duration the camera returns to continuous autofocus.
+   */
+  private fun triggerAutoFocusAt(x: Float, y: Float) {
     val meteringPointFactory = previewView?.meteringPointFactory ?: return
-    val afPoint = meteringPointFactory.createPoint(normalizedX, normalizedY)
+    val afPoint = meteringPointFactory.createPoint(x, y)
 
-    val focusAction = FocusMeteringAction.Builder(afPoint, FocusMeteringAction.FLAG_AF)
-      .setAutoCancelDuration(2, java.util.concurrent.TimeUnit.SECONDS) // Auto-cancel after 2 seconds
+    val focusAction = FocusMeteringAction.Builder(
+      afPoint,
+      FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
+    )
+      .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS)
       .build()
 
     camera?.cameraControl?.startFocusAndMetering(focusAction)
       ?.addListener({
-        Log.d(TAG, "Auto-focus triggered at ($normalizedX, $normalizedY)")
+        Log.d(TAG, "Auto-focus triggered at ($x, $y)")
       }, ContextCompat.getMainExecutor(context))
+  }
+
+  override fun onTouchEvent(event: MotionEvent): Boolean {
+    if (!pinchToZoomEnabled && !tapToFocusEnabled) {
+      return super.onTouchEvent(event)
+    }
+    if (pinchToZoomEnabled) {
+      scaleGestureDetector.onTouchEvent(event)
+    }
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> isMultiTouchGesture = false
+      MotionEvent.ACTION_POINTER_DOWN -> if (!isMultiTouchGesture) {
+        // A second finger means this gesture is a pinch, not a tap: cancel the pending tap
+        isMultiTouchGesture = true
+        val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+        tapGestureDetector.onTouchEvent(cancel)
+        cancel.recycle()
+      }
+    }
+    if (tapToFocusEnabled && !isMultiTouchGesture) {
+      tapGestureDetector.onTouchEvent(event)
+    }
+    return true
+  }
+
+  // MARK: - Zoom
+
+  private fun applyZoomRatio(ratio: Float) {
+    currentZoom = ratio
+    camera?.cameraControl?.setZoomRatio(ratio)
+  }
+
+  /**
+   * Smoothly animate to the given zoom ratio, then refocus on the scan region.
+   */
+  private fun animateZoomTo(target: Float) {
+    zoomAnimator?.cancel()
+    zoomAnimator = ValueAnimator.ofFloat(currentZoom, target).apply {
+      duration = ZOOM_ANIMATION_MS
+      addUpdateListener { applyZoomRatio(it.animatedValue as Float) }
+      addListener(object : android.animation.AnimatorListenerAdapter() {
+        private var cancelled = false
+        override fun onAnimationCancel(animation: android.animation.Animator) {
+          cancelled = true
+        }
+
+        override fun onAnimationEnd(animation: android.animation.Animator) {
+          if (cancelled) return
+          emitOnZoomChange(target)
+          refocusOnScanRegion()
+        }
+      })
+      start()
+    }
+    Log.d(TAG, "Auto-zoom: $currentZoom -> $target")
+  }
+
+  /**
+   * Adjust zoom based on barcodes detected inside the scan region.
+   *
+   * Only barcodes whose center lies in the scan region (the focus area when enabled) are
+   * considered, so a barcode outside the focus area never drives the zoom. Because digital
+   * zoom scales around the preview center, the zoom-in factor is also capped so the target
+   * stays inside the region after zooming (important for off-center focus areas).
+   *
+   * Must be called on the main thread.
+   */
+  private fun evaluateAutoZoom(
+    barcodes: List<Barcode>,
+    transformationInfo: ImageAnalysisTransformationInfo
+  ) {
+    if (!autoZoomEnabled || isPinching || isScanningPaused) return
+    val view = previewView ?: return
+    val zoomState = camera?.cameraInfo?.zoomState?.value ?: return
+    val region = scanRegion() ?: return
+    val now = SystemClock.uptimeMillis()
+
+    val candidates = barcodes.mapNotNull { barcode ->
+      barcode.boundingBox?.let { box ->
+        barcode to transformBarcodeBoundingBox(box, transformationInfo, view)
+      }
+    }.filter { (_, rect) -> region.contains(rect.centerX(), rect.centerY()) }
+
+    if (candidates.isEmpty()) {
+      // Nothing to scan in the region for a while: return to the base zoom
+      if (currentZoom > baseZoom * (1 + AUTO_ZOOM_MIN_STEP) &&
+        now - lastCandidateTime > AUTO_ZOOM_RESET_DELAY_MS &&
+        zoomAnimator?.isRunning != true
+      ) {
+        lastCandidateTime = now
+        animateZoomTo(baseZoom)
+      }
+      return
+    }
+    lastCandidateTime = now
+
+    // A decoded barcode that will actually be emitted (fully inside the focus area when
+    // filtering is on) means this zoom works: leave it alone
+    if (candidates.any { (barcode, rect) -> barcode.rawValue != null && wouldBeEmitted(rect) }) return
+    if (zoomAnimator?.isRunning == true || now - lastAutoZoomTime < AUTO_ZOOM_COOLDOWN_MS) return
+
+    val target = candidates.maxByOrNull { (_, rect) -> rect.width() * rect.height() }!!.second
+    val fill = max(target.width() / region.width(), target.height() / region.height())
+    if (fill <= 0f) return
+
+    val factor = when {
+      // Barcode spills past the region (and is filtered out): back off
+      !region.contains(target) && currentZoom > baseZoom ->
+        min(AUTO_ZOOM_TARGET_FILL / fill, AUTO_ZOOM_OUT_STEP)
+      fill < AUTO_ZOOM_MIN_FILL ->
+        min(AUTO_ZOOM_TARGET_FILL / fill, maxZoomFactorKeepingInside(target, region, view))
+      fill > AUTO_ZOOM_MAX_FILL && currentZoom > baseZoom ->
+        AUTO_ZOOM_TARGET_FILL / fill
+      else -> return
+    }
+
+    val upperBound = max(baseZoom, min(maxAutoZoom, zoomState.maxZoomRatio))
+    val newZoom = (currentZoom * factor).coerceIn(baseZoom, upperBound)
+    if (abs(newZoom - currentZoom) / currentZoom < AUTO_ZOOM_MIN_STEP) return
+
+    lastAutoZoomTime = now
+    animateZoomTo(newZoom)
+  }
+
+  /**
+   * Whether a decoded barcode at [rect] (view coordinates) passes the focus area filter in
+   * [processBarcodesAccordingToStrategy].
+   */
+  private fun wouldBeEmitted(rect: RectF): Boolean {
+    if (!focusAreaEnabled) return true
+    val frame = overlayView?.frameRect ?: return true
+    return frame.contains(rect)
+  }
+
+  /**
+   * Largest relative zoom factor that keeps [box] inside [region] (inset by a margin),
+   * given that digital zoom scales around the center of the preview.
+   */
+  private fun maxZoomFactorKeepingInside(box: RectF, region: RectF, view: View): Float {
+    val cx = view.width / 2f
+    val cy = view.height / 2f
+    val insetX = region.width() * AUTO_ZOOM_REGION_INSET
+    val insetY = region.height() * AUTO_ZOOM_REGION_INSET
+    val bounds = RectF(region.left + insetX, region.top + insetY, region.right - insetX, region.bottom - insetY)
+
+    var limit = Float.MAX_VALUE
+    if (box.left < cx) limit = min(limit, (cx - bounds.left) / (cx - box.left))
+    if (box.right > cx) limit = min(limit, (bounds.right - cx) / (box.right - cx))
+    if (box.top < cy) limit = min(limit, (cy - bounds.top) / (cy - box.top))
+    if (box.bottom > cy) limit = min(limit, (bounds.bottom - cy) / (box.bottom - cy))
+    // A limit below 1 means the box already sits at/over the edge: don't zoom in
+    return max(limit, 1f)
   }
 
 
@@ -443,8 +724,13 @@ class ScannerView : FrameLayout {
           rotationDegrees = imageProxy.imageInfo.rotationDegrees
         )
 
-        barcodeScanner.process(image)
-          .addOnSuccessListener { barcodes ->
+        val scanner = barcodeScanner
+        scanner.process(image)
+          .addOnSuccessListener { allBarcodes ->
+            // Undecoded (potential) barcodes only drive auto-zoom
+            evaluateAutoZoom(allBarcodes, transformationInfo)
+            val barcodes = allBarcodes.filter { it.rawValue != null }
+
             // Process barcode detection for the main scanning logic
             if (barcodes.isNotEmpty() && !isScanningPaused) {
               val processedBarcodes = processBarcodesAccordingToStrategy(barcodes, transformationInfo)
@@ -513,6 +799,10 @@ class ScannerView : FrameLayout {
             }
           }
           .addOnFailureListener { e ->
+            // The client was replaced (auto-zoom toggled) or closed mid-frame: not a real error
+            if (scanner !== barcodeScanner || cameraExecutor.isShutdown) {
+              return@addOnFailureListener
+            }
             // Emit onScannerError event for barcode detection failure
             emitOnScannerError(
               error = e.message ?: "Barcode detection failed",
@@ -536,11 +826,6 @@ class ScannerView : FrameLayout {
   fun setEnableFrame(enable: Boolean) {
     enableFrame = enable
     overlayView?.setEnableFrame(enable)
-
-    // Update focus when frame is toggled
-    if (camera != null) {
-      setupAutoFocusOnFrame()
-    }
   }
 
   fun setBorderColor(color: String) {
@@ -578,6 +863,16 @@ class ScannerView : FrameLayout {
   }
 
   // Barcode frames configuration methods
+  /**
+   * Called once after all focus area props (enabled, overlay, position, size) are applied,
+   * so focus is metered on the final rectangle.
+   */
+  fun onFocusAreaUpdated() {
+    if (camera != null) {
+      refocusOnScanRegion(force = true)
+    }
+  }
+
   fun setBarcodeFramesEnabled(enabled: Boolean) {
     barcodeFramesEnabled = enabled
     Log.d(TAG, "Barcode frames enabled: $enabled")
@@ -594,15 +889,45 @@ class ScannerView : FrameLayout {
 
   fun setZoom(zoom: Float) {
     this.zoom = zoom
+    zoomAnimator?.cancel()
     // Apply zoom, respecting the device's limits
     val zoomState = camera?.cameraInfo?.zoomState?.value
-    if (zoomState != null) {
-      val newZoom = zoom.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
-      camera?.cameraControl?.setZoomRatio(newZoom)
-      Log.d(TAG, "Setting zoom to $newZoom (requested $zoom)")
+    val newZoom = if (zoomState != null) {
+      zoom.coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
     } else {
-      camera?.cameraControl?.setZoomRatio(zoom)
+      max(zoom, 1f)
     }
+    baseZoom = newZoom
+    applyZoomRatio(newZoom)
+    Log.d(TAG, "Setting zoom to $newZoom (requested $zoom)")
+  }
+
+  fun setAutoZoomEnabled(enabled: Boolean) {
+    if (enabled == autoZoomEnabled) return
+    autoZoomEnabled = enabled
+    // Potential barcodes are only needed for auto-zoom: swap the client to skip that work.
+    // A frame still in flight on the old client fails quietly (see processImage).
+    if (!cameraExecutor.isShutdown) {
+      val oldScanner = barcodeScanner
+      barcodeScanner = createBarcodeScanner(withPotentialBarcodes = enabled)
+      oldScanner.close()
+    }
+    if (!enabled && currentZoom != baseZoom && camera != null) {
+      animateZoomTo(baseZoom)
+    }
+    Log.d(TAG, "Auto-zoom ${if (enabled) "enabled" else "disabled"}")
+  }
+
+  fun setMaxAutoZoom(value: Float) {
+    maxAutoZoom = max(value, 1f)
+  }
+
+  fun setPinchToZoomEnabled(enabled: Boolean) {
+    pinchToZoomEnabled = enabled
+  }
+
+  fun setTapToFocusEnabled(enabled: Boolean) {
+    tapToFocusEnabled = enabled
   }
 
   fun setTorch(enabled: Boolean) {
@@ -669,6 +994,19 @@ class ScannerView : FrameLayout {
         ctx.getJSModule(RCTEventEmitter::class.java)
           .receiveEvent(this@ScannerView.id, "onScannerError", eventData)
         Log.d(TAG, "✅ onScannerError event emitted: code=$code, error=$error")
+      }
+    }
+  }
+
+  private fun emitOnZoomChange(zoom: Float) {
+    val ctx = reactContext
+    if (ctx is ThemedReactContext) {
+      ctx.runOnUiQueueThread {
+        val eventData = Arguments.createMap().apply {
+          putDouble("zoom", zoom.toDouble())
+        }
+        ctx.getJSModule(RCTEventEmitter::class.java)
+          .receiveEvent(this@ScannerView.id, "onZoomChange", eventData)
       }
     }
   }

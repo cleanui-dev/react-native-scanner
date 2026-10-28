@@ -49,6 +49,23 @@ class CameraManager: NSObject, CameraControlProtocol {
     
     /// Observer for subject area change (refocus when scene changes, like native Camera app)
     private var subjectAreaObserver: NSObjectProtocol?
+
+    /// Zoom ramp rate in powers of two per second (8 = 1x to 4x in 0.25s)
+    private static let zoomRampRate: Float = 8.0
+
+    /// Smallest barcode (in millimeters) we want to be readable at the minimum focus distance
+    private static let minimumCodeSize: Float = 20.0
+
+    /// Device properties read from the main thread, captured on sessionQueue once the device
+    /// is configured (currentDevice itself is only touched on sessionQueue).
+    private struct DeviceSnapshot {
+        let minZoom: CGFloat
+        let maxZoom: CGFloat
+        let minimumFocusDistance: Float // millimeters, -1 if unknown
+        let fieldOfView: Float // degrees, along the sensor's long side
+    }
+    private var deviceSnapshot: DeviceSnapshot?
+    private let snapshotLock = NSLock()
     
     // MARK: - Initialization
     
@@ -125,12 +142,74 @@ class CameraManager: NSObject, CameraControlProtocol {
     /// Set zoom level
     /// - Parameter level: The zoom level (clamped to device limits)
     func setZoom(level: CGFloat) {
-        desiredZoomLevel = level
         sessionQueue.async { [weak self] in
+            self?.desiredZoomLevel = level
             self?.applyZoom()
         }
     }
     
+    /// Smoothly ramp to a zoom level (clamped to device limits)
+    /// - Parameter level: The target zoom level
+    func rampZoom(to level: CGFloat) {
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.desiredZoomLevel = level
+            guard let device = self.currentDevice else { return }
+            self.lockDeviceForConfiguration(device) { device in
+                let clampedZoom = min(max(level, device.minAvailableVideoZoomFactor),
+                                      device.maxAvailableVideoZoomFactor)
+                device.ramp(toVideoZoomFactor: clampedZoom, withRate: Self.zoomRampRate)
+            }
+        }
+    }
+
+    /// Zoom limits of the current device, or nil before the camera is configured
+    func zoomLimits() -> (min: CGFloat, max: CGFloat)? {
+        guard let snapshot = currentSnapshot() else { return nil }
+        return (snapshot.minZoom, snapshot.maxZoom)
+    }
+
+    private func currentSnapshot() -> DeviceSnapshot? {
+        snapshotLock.lock()
+        defer { snapshotLock.unlock() }
+        return deviceSnapshot
+    }
+
+    /// Capture device properties for main-thread readers. Must be called on sessionQueue.
+    private func updateDeviceSnapshot() {
+        guard let device = currentDevice else { return }
+        let snapshot = DeviceSnapshot(
+            minZoom: device.minAvailableVideoZoomFactor,
+            maxZoom: device.maxAvailableVideoZoomFactor,
+            minimumFocusDistance: Float(device.minimumFocusDistance),
+            fieldOfView: device.activeFormat.videoFieldOfView
+        )
+        snapshotLock.lock()
+        deviceSnapshot = snapshot
+        snapshotLock.unlock()
+    }
+
+    /// Zoom factor at which a barcode of `minimumCodeSize` filling `fillFraction` of the
+    /// preview's long side is at the lens' minimum focus distance.
+    ///
+    /// Newer iPhones' wide cameras can't focus closer than ~15-20cm, so users hold small codes
+    /// too close and get a blurry image. Zooming by this factor makes the code look big enough
+    /// at a distance the lens can actually focus. Returns 1.0 for devices that don't need it.
+    /// See Apple's AVCamBarcode sample / WWDC21 "What's new in camera capture".
+    func minimumFocusZoomFactor(fillFraction: CGFloat) -> CGFloat? {
+        guard let snapshot = currentSnapshot() else { return nil }
+        let minimumFocusDistance = snapshot.minimumFocusDistance
+        guard minimumFocusDistance > 0 else { return nil }
+
+        let fieldOfView = snapshot.fieldOfView
+        let halfAngle = (fieldOfView / 2) * .pi / 180
+        let fill = Float(min(max(fillFraction, 0.1), 1.0))
+        let minimumSubjectDistance = (Self.minimumCodeSize / fill) / tan(halfAngle)
+
+        guard minimumSubjectDistance < minimumFocusDistance else { return 1.0 }
+        return CGFloat(minimumFocusDistance / minimumSubjectDistance)
+    }
+
     /// Set focus and exposure point of interest for better scanning of small barcodes/QR codes.
     /// Call this after the camera has started (e.g. when focus area is known).
     /// - Parameters:
@@ -182,6 +261,7 @@ class CameraManager: NSObject, CameraControlProtocol {
         }
         
         captureSession.commitConfiguration()
+        updateDeviceSnapshot()
 
         // Apply desired settings once input/output are configured
         applyZoom()
@@ -202,14 +282,8 @@ class CameraManager: NSObject, CameraControlProtocol {
             return false
         }
 
-        // Bias autofocus towards near objects (ideal for barcodes/QR codes held close to camera).
-        // Must be configured before adding the device to an active session to be effective.
-        lockDeviceForConfiguration(device) { device in
-            if device.isAutoFocusRangeRestrictionSupported {
-                device.autoFocusRangeRestriction = .near
-                print("[CameraManager] ✅ Auto-focus range restriction set to NEAR")
-            }
-        }
+        // Note: no autoFocusRangeRestriction (.near) here. It limits the focus sweep to close
+        // range, which makes codes scanned from further away (with zoom) hard to bring into focus.
 
         do {
             let input = try AVCaptureDeviceInput(device: device)

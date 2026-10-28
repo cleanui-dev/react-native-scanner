@@ -24,6 +24,10 @@ import Vision
     /// Called when the scanner is loaded and ready
     /// - Parameter info: Load information dictionary
     func scannerDidLoad(_ info: [String: Any])
+
+    /// Called when the zoom changes from auto-zoom or pinch-to-zoom
+    /// - Parameter info: Dictionary with the new `zoom` ratio
+    @objc optional func scannerDidChangeZoom(_ info: [String: Any])
 }
 
 // MARK: - Camera Manager Delegate

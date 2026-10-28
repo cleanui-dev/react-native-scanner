@@ -27,4 +27,5 @@ export type {
   BarcodeScannedEvent,
   ScannerErrorEvent,
   OnLoadEvent,
+  ZoomChangeEvent,
 } from './ScannerViewNativeComponent';

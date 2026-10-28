@@ -37,24 +37,32 @@ class FocusAreaView : View {
     }
   }
 
-  private fun drawFrame(canvas: Canvas) {
+  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+    super.onSizeChanged(w, h, oldw, oldh)
+    updateFrameRect()
+  }
+
+  /**
+   * Compute the focus area rect in view coordinates. Kept independent of drawing so
+   * scanning/zoom logic can use it even when the overlay is hidden.
+   */
+  private fun updateFrameRect() {
+    if (width == 0 || height == 0) return
+
     // Calculate position based on percentage (0-100)
     val centerX = (width * positionX / 100f)
     val centerY = (height * positionY / 100f)
 
     // Calculate frame dimensions based on frameSize type
+    val density = context.resources.displayMetrics.density
     val currentFrameSize = frameSize // Local copy to avoid smart cast issues
     val (frameWidth, frameHeight) = when (currentFrameSize) {
       is FrameSize.Square -> {
-        val density = context.resources.displayMetrics.density
         val size = currentFrameSize.size * density
         size to size
       }
       is FrameSize.Rectangle -> {
-        val density = context.resources.displayMetrics.density
-        val width = currentFrameSize.width * density
-        val height = currentFrameSize.height * density
-        width to height
+        currentFrameSize.width * density to currentFrameSize.height * density
       }
     }
 
@@ -68,6 +76,10 @@ class FocusAreaView : View {
       centerX + frameHalfWidth,
       centerY + frameHalfHeight
     )
+  }
+
+  private fun drawFrame(canvas: Canvas) {
+    val frameRect = frameRect ?: return
 
     // Draw semi-transparent overlay
     val overlayPaint = Paint().apply {
@@ -83,7 +95,7 @@ class FocusAreaView : View {
       color = Color.TRANSPARENT
       xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
     }
-    canvas.drawRect(frameRect!!, clearPaint)
+    canvas.drawRect(frameRect, clearPaint)
 
     // Draw frame border only if color is not transparent
     if (borderColor != Color.TRANSPARENT) {
@@ -92,7 +104,7 @@ class FocusAreaView : View {
         style = Paint.Style.STROKE
         strokeWidth = 4f
       }
-      canvas.drawRect(frameRect!!, borderPaint)
+      canvas.drawRect(frameRect, borderPaint)
     }
   }
 
@@ -113,12 +125,14 @@ class FocusAreaView : View {
 
   fun setFrameSize(size: FrameSize) {
     frameSize = size
+    updateFrameRect()
     invalidate()
   }
 
   fun setPosition(x: Float, y: Float) {
     positionX = x.coerceIn(0f, 100f) // Clamp to 0-100 range
     positionY = y.coerceIn(0f, 100f) // Clamp to 0-100 range
+    updateFrameRect()
     invalidate()
   }
 }
