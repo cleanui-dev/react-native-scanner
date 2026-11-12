@@ -1961,7 +1961,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - Scanner (1.0.0-beta.8):
+  - Scanner (1.0.0-beta.10):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2306,7 +2306,7 @@ SPEC CHECKSUMS:
   ReactNativeDependencies: 6738e602b46fd24aa453cd58267ec3bb8bf29d27
   RNPermissions: 5db1b283f324522b64df0684ab74f08039fbfa54
   RNScreens: 7a6674e15510571d61c4f7d802b4b46b53cbbeab
-  Scanner: 0db8a48a0948b3ff83fded27ed437b6556e3bc81
+  Scanner: 9d11627e2d8258cc47d907e22597dbfa9852d516
   Yoga: 18b74b3ade30bebc1904004dfaceae1dd02a330a
 
 PODFILE CHECKSUM: 30230d56315b5545a85ba4eb4f6e2de82fa70ddc
