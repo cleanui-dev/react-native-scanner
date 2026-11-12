@@ -116,8 +116,11 @@ class CameraManager: NSObject, CameraControlProtocol {
     /// Stop the camera session
     func stopCamera() {
         unregisterSubjectAreaChangeObserver()
-        sessionQueue.async { [weak self] in
-            guard let self = self, self.isSessionRunning else { return }
+        // Capture self strongly: the queued shutdown keeps the manager alive until the session
+        // has actually stopped, even if the owning view is released right after this call.
+        // Never call this from deinit (forming any reference to a deallocating object aborts).
+        sessionQueue.async {
+            guard self.isSessionRunning else { return }
             
             // Always turn torch off when stopping camera to avoid leaving hardware active.
             self.forceTorchOff()
@@ -581,7 +584,22 @@ class CameraManager: NSObject, CameraControlProtocol {
     
     deinit {
         unregisterSubjectAreaChangeObserver()
-        stopCamera()
+        // Self is already deallocating, so the queued work must not reference it (a weak or strong
+        // capture here aborts with "Cannot form weak reference"). Stop with captured locals instead.
+        if isSessionRunning {
+            let session = captureSession
+            let device = currentDevice
+            sessionQueue.async {
+                if let device = device, device.hasTorch, device.torchMode != .off,
+                   (try? device.lockForConfiguration()) != nil {
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                }
+                if session.isRunning {
+                    session.stopRunning()
+                }
+            }
+        }
         print("[CameraManager] Deinitialized")
     }
 }
